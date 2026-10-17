@@ -1139,3 +1139,4 @@ zip -r Regent-DREX-v4.2.1.zip Regent-DREX
 - 本项目基于 **MIT License** 开源（见 [LICENSE](LICENSE)）
 - 原项目：[YiJieqwq/Regent-DREX-QFPlugin](https://github.com/YiJieqwq/Regent-DREX-QFPlugin)（作者 **YiJieqwq异界**），本仓库是在原版基础上的增强 Fork
 - 感谢 [QFun](https://github.com/oneQAQone/QFun) 提供的插件运行环境
+- QFun 官方插件 API 注解：[QFun_Plugin_API.md](QFun_Plugin_API.md)（转载自官方文档 [qfun.store/doc.php](https://qfun.store/doc.php)，供插件开发参考，内容以官方页面为准）
