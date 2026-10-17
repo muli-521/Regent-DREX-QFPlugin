@@ -1,80 +1,103 @@
-name: Build Regent-DREX
+name: Build & Release Regent-DREX
+
+# 精简设计（v4.2+）：
+#   - 唯一触发 = 推送 main 或手动运行；不再有"标签推送"第二遍触发，也就没有双跑/竞态。
+#   - 版本号（plugin/info.prop 的 versionCode）已是新版本时，自动创建标签 + 发布 Release；
+#     版本号未变时只构建产物（Actions artifact），不重复发版。
+#   - 今后发版 = 改代码 + 改版本号 + 推送 main，打包/校验/发布全由 CI 完成。
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   workflow_dispatch: {}
 
 permissions:
   contents: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout（含全部标签）
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Verify plugin files
+      - name: 读取版本并判断是否发版
+        id: info
         run: |
-          set -e
+          set -euo pipefail
+          git fetch --tags --force --quiet origin 2>/dev/null || true
+          ver=$(grep -m1 '^versionCode[[:space:]]*=' plugin/info.prop | sed 's/[^=]*=[[:space:]]*//' | tr -d ' \r')
+          pid=$(grep -m1 '^id[[:space:]]*=' plugin/info.prop | sed 's/[^=]*=[[:space:]]*//' | tr -d ' \r')
+          [ -n "$ver" ] && [ -n "$pid" ] || { echo "::error::plugin/info.prop 缺少 id/versionCode"; exit 1; }
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+          echo "pid=$pid" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$ver" >/dev/null; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "标签 v$ver 已存在 → 本次只构建产物，不重复发版"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "标签 v$ver 不存在 → 构建后自动发布 Release v$ver"
+          fi
+
+      - name: 打包（QFun 标准格式）+ SHA256
+        env:
+          PID: ${{ steps.info.outputs.pid }}
+          VER: ${{ steps.info.outputs.ver }}
+        run: |
+          set -euo pipefail
           for f in info.prop desc.txt main.java; do
-            if [ ! -f "plugin/$f" ]; then
-              echo "::error::缺少插件文件 plugin/$f"
-              exit 1
-            fi
+            [ -f "plugin/$f" ] || { echo "::error::缺少 plugin/$f"; exit 1; }
           done
-          echo "插件文件齐全: info.prop desc.txt main.java"
-
-      - name: Package (QFun 标准格式)
-        run: |
           python3 - <<'PY'
-          import zipfile
+          import os, zipfile
           from pathlib import Path
 
+          pid, ver = os.environ["PID"], os.environ["VER"]
           src = Path("plugin")
-          props = {}
-          for line in src.joinpath("info.prop").read_text(encoding="utf-8-sig").splitlines():
-              line = line.strip()
-              if "=" in line and not line.startswith("#"):
-                  k, v = line.split("=", 1)
-                  props[k.strip()] = v.strip()
-
-          pid = props.get("id", "").strip()
-          ver = props.get("versionCode", "").strip()
-          if not pid or not ver:
-              raise SystemExit("info.prop 缺少 id 或 versionCode")
-
           out = Path(f"{pid}-v{ver}.zip")
           with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
               z.writestr(f"{pid}/", "")
               for name in ("info.prop", "desc.txt", "main.java"):
                   z.write(src / name, f"{pid}/{name}")
-
           print(f"产物: {out} ({out.stat().st_size} 字节)")
-          with open("build.env", "w", encoding="utf-8") as f:
-              f.write(f"PLUGIN_ID={pid}\nPLUGIN_VER={ver}\n")
           PY
-          cat build.env >> "$GITHUB_ENV"
+          zipf=$(ls -1 *.zip | head -n1)
+          sha256sum "$zipf" > "$zipf.sha256"
+          cat "$zipf.sha256"
 
-      - name: Checksum (SHA256)
-        run: sha256sum "${{ env.PLUGIN_ID }}-v${{ env.PLUGIN_VER }}.zip" | tee "${{ env.PLUGIN_ID }}-v${{ env.PLUGIN_VER }}.zip.sha256"
-
-      - name: Upload artifact
+      - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.PLUGIN_ID }}-v${{ env.PLUGIN_VER }}
+          name: Regent-DREX-v${{ steps.info.outputs.ver }}
           path: |
-            ${{ env.PLUGIN_ID }}-v${{ env.PLUGIN_VER }}.zip
-            ${{ env.PLUGIN_ID }}-v${{ env.PLUGIN_VER }}.zip.sha256
+            *.zip
+            *.zip.sha256
           if-no-files-found: error
 
-      - name: Publish release (仅标签推送)
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: 自动发布（仅版本号变化时）
+        if: steps.info.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.info.outputs.ver }}
+          name: Regent-DREX v${{ steps.info.outputs.ver }}
+          body: |
+            ## Regent-DREX v${{ steps.info.outputs.ver }}
+
+            QFun 群管插件自动发布 —— 附件由 GitHub Actions 从仓库 `plugin/` 源码构建，与源码逐字节一致。
+
+            ### 安装（QFun）
+            1. 下载附件 `Regent-DREX-v${{ steps.info.outputs.ver }}.zip`
+            2. 解压后把 `Regent-DREX/` 整个文件夹放进 QFun 的插件目录
+            3. 群内发送 `/on` 启用；把宿主 QQ 写进 `config/owner.txt`
+
+            详细教程（安装 / 全部指令 / 配置 / FAQ / 源码注释）见 [README](https://github.com/muli-521/Regent-DREX-QFPlugin/blob/main/README.md)
           files: |
-            ${{ env.PLUGIN_ID }}-v${{ env.PLUGIN_VER }}.zip
-            ${{ env.PLUGIN_ID }}-v${{ env.PLUGIN_VER }}.zip.sha256
+            *.zip
+            *.zip.sha256
           generate_release_notes: true
