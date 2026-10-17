@@ -1,0 +1,80 @@
+name: Build Regent-DREX
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify plugin files
+        run: |
+          set -e
+          for f in info.prop desc.txt main.java; do
+            if [ ! -f "plugin/$f" ]; then
+              echo "::error::缺少插件文件 plugin/$f"
+              exit 1
+            fi
+          done
+          echo "插件文件齐全: info.prop desc.txt main.java"
+
+      - name: Package (QFun 标准格式)
+        run: |
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+
+          src = Path("plugin")
+          props = {}
+          for line in src.joinpath("info.prop").read_text(encoding="utf-8-sig").splitlines():
+              line = line.strip()
+              if "=" in line and not line.startswith("#"):
+                  k, v = line.split("=", 1)
+                  props[k.strip()] = v.strip()
+
+          pid = props.get("id", "").strip()
+          ver = props.get("versionCode", "").strip()
+          if not pid or not ver:
+              raise SystemExit("info.prop 缺少 id 或 versionCode")
+
+          out = Path(f"{pid}-v{ver}.zip")
+          with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+              z.writestr(f"{pid}/", "")
+              for name in ("info.prop", "desc.txt", "main.java"):
+                  z.write(src / name, f"{pid}/{name}")
+
+          print(f"产物: {out} ({out.stat().st_size} 字节)")
+          with open("build.env", "w", encoding="utf-8") as f:
+              f.write(f"PLUGIN_ID={pid}\nPLUGIN_VER={ver}\n")
+          PY
+          cat build.env >> "$GITHUB_ENV"
+
+      - name: Checksum (SHA256)
+        run: sha256sum "${{ env.PLUGIN_ID }}-v${{ env.PLUGIN_VER }}.zip" | tee "${{ env.PLUGIN_ID }}-v${{ env.PLUGIN_VER }}.zip.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PLUGIN_ID }}-v${{ env.PLUGIN_VER }}
+          path: |
+            ${{ env.PLUGIN_ID }}-v${{ env.PLUGIN_VER }}.zip
+            ${{ env.PLUGIN_ID }}-v${{ env.PLUGIN_VER }}.zip.sha256
+          if-no-files-found: error
+
+      - name: Publish release (仅标签推送)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.PLUGIN_ID }}-v${{ env.PLUGIN_VER }}.zip
+            ${{ env.PLUGIN_ID }}-v${{ env.PLUGIN_VER }}.zip.sha256
+          generate_release_notes: true

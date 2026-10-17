@@ -1,133 +1,1163 @@
-# Regent-DREX
+# Regent-DREX 群管系统（QFun 插件）
 
-**English** | [中文](README.zh-CN.md)
+> **Fork 增强版** · 当前版本 **v4.2** · 运行环境 [QFun](https://github.com/oneQAQone/QFun)（BeanShell 脚本引擎）
+>
+> 本项目 fork 自原作者 **YiJieqwq异界** 的 [Regent-DREX-QFPlugin](https://github.com/YiJieqwq/Regent-DREX-QFPlugin)（原版 v1.5），
+> 在原版的指令路由架构上持续增强：黑名单体系、入群拦截、通知群、代管体系、联盟封禁等全面重做。完整变更见[更新日志](#七更新日志)。
 
-> A QQ group administration command system — built on the DREX command-routing architecture, a sibling of Corax Strata.
+一个面向 QQ 群的群管指令系统：**禁言 / 踢出 / 踢黑 / 警告 / 代管 / 联盟封禁 / 入群黑名单拦截与提醒**。
 
-## Introduction
+所有指令以 `/` 开头；目标（被执行的人）支持三种写法：`@用户`、直接写 QQ 号、或**引用一条消息**（不写目标时默认作用于被引用者）。
 
-Regent-DREX is a group management tool running in the QFun environment, built on a registry + argument-parser architecture.
-Every command is an English `/`-prefixed command and accepts either `@user` or a bare UIN.
-Each action reply includes a blue, clickable mention.
+## 核心特性
 
-## Quick Start
+- **完整指令体系**：禁言（时长/全体/列表）、解禁、踢出、踢黑、解除踢黑、警告（阈值自动踢）、状态查看
+- **强黑名单系统**：本群拉黑、跨群拉黑（仅宿主）、引用消息自动提取号码、`标记号码`语法防误判
+- **入群命中拦截**：`kick / ask / off` 三种处理方式；ask 模式发送提醒，回复 `yes` 一键踢出（60 秒内有效）
+- **通知群转发**：入群命中提醒可集中转发到指定管理群；设置了通知群则本群不再提醒（v4.1 起）
+- **代管三级体系**：宿主指定代管、群主/管理员自动识别、群内管理员自助维护本地名单
+- **联盟封禁**：封禁一人 = 所有联盟群同步踢出 + 拦截入群
+- **保护规则**：宿主/代管/群管不会被误操作，群管之间互不操作
+- **自动化**：艾特机器人即禁言、退群自动拉黑、代管被禁言自动解禁
+- **本地日志**：所有操作落盘 `config/log/`，可随时审计
+- **隐藏指令**：`/master` 名单管理（仅宿主可见，他人调用无任何反应）
 
-### Installation
+---
 
-1. Extract the CI bundle into the QFun plugin directory
-2. Send `/on` in the target group to enable group administration
-3. Start using the commands
+## 目录
 
-### Basic Setup
+- [一、快速开始（三分钟上手）](#一快速开始三分钟上手)
+- [二、安装与启用（详细教程）](#二安装与启用详细教程)
+- [三、指令大全（逐条详解）](#三指令大全逐条详解)
+- [四、权限模型与保护规则](#四权限模型与保护规则)
+- [五、存储结构与运行机制](#五存储结构与运行机制)
+- [六、源码注释总览](#六源码注释总览)
+- [七、更新日志](#七更新日志)
+- [八、构建与发布（GitHub Actions）](#八构建与发布github-actions)
+- [九、常见问题（FAQ）](#九常见问题faq)
+- [十、许可与致谢](#十许可与致谢)
 
-```
-/on                  # Enable administration in this group
-/on                  # Repeated enable → "already enabled"
-/off                 # Disable administration in this group
-/admin add @someone  # Add a delegate
-```
+---
 
-## Commands
+## 一、快速开始（三分钟上手）
 
-```
-/mute @someone <duration> <reason (optional)>
-/mute all
-/mute list
-
-/unmute @someone
-/unmute all
-
-/kick @someone <reason (optional)>
-
-/ban @someone <reason (optional)>
-/ban list
-
-/admin add @someone
-/admin rm @someone
-/admin list
-/admin clear
-
-/alliance add
-/alliance rm
-
-/fban @someone <reason (optional)>
-/unfban @someone <cause (optional)>
-
-/toggle <feature> on|off
-/set <key> <value>
-/status
-/help
-```
-
-## Arguments
-
-| Type | Format | Example |
-|------|------|------|
-| Duration | `30s` `15m` `2h` `1d` | `/mute @Alice 30m` |
-| User | `@someone` or a UIN | `/kick @Alice` or `/kick 123456` |
-| Reason | Any text, placed last | `/kick @Alice advertising` |
-
-## Feature Toggles
-
-| Feature | Description | Example |
-|--------|------|------|
-| `muteonat` | Mute someone for mentioning the bot | `/toggle muteonat on` |
-| `autoban` | Auto-blacklist users who leave the group | `/toggle autoban on` |
-| `selftitle` | Self-service titles | `/toggle selftitle off` |
-| `unmutedelegate` | Auto-unmute a muted delegate | `/toggle unmutedelegate on` |
-
-## Configuration Keys
-
-| key | Type | Description | Example |
-|-----|--------|------|------|
-| `mutetime` | Seconds | Default duration for mention-triggered mutes | `/set mutetime 86400` |
-
-## Permission Model
-
-| Role | Allowed commands |
-|------|-----------|
-| Host | All commands (`/on` `/off` `/admin` `/alliance` are host-only) |
-| Delegate | `/mute` `/unmute` `/kick` `/ban` `/fban` `/unfban` `/toggle` `/set` `/status` |
-| Member | `/help` |
-
-### Protection Rules
-
-- The host can never be acted on by any administrative command
-- Once added, a delegate enters a protected pool: **nobody** (including the host) can act on a delegate via `/mute` `/kick` `/ban`
-- A delegate cannot act on another delegate
-- Unauthorized users sending commands → silently ignored, no message sent
-- Unknown commands → silently ignored, no message sent
-- Repeated `/on` `/off` → a notice that it is already enabled/disabled
-
-## Reply Format
+1. 从 [Releases](../../releases) 下载最新的 `Regent-DREX-v4.2.zip`
+2. 解压后得到 `Regent-DREX/` 文件夹，整个放进 QFun 的插件目录（见第二章）
+3. 在群内发送 `/on` 启用本群群管
+4. 把宿主 QQ 号写进 `config/owner.txt`（不写则默认机器人自己是宿主）
+5. 开始使用，例如：
 
 ```
-Muted! User: Alice(123456) Duration: 30m Reason: spamming By: [atUin=789012]
+/on                                 # 启用本群
+/mute @张三 30m 刷屏                 # 禁言 30 分钟
+/ban @李四 广告                      # 踢出并拉黑
+/ban setuser 123456,234567          # 直接拉黑两个 QQ 号
+/status                             # 查看本群配置
+/help                               # 查看完整帮助
 ```
 
-`[atuin=xxx]` renders in QQ as a blue, clickable mention.
+---
 
-## Event Listeners
+## 二、安装与启用（详细教程）
 
-| Event | Behavior |
+### 2.1 前置：准备好 QFun
+
+1. 前往 [oneQAQone/QFun](https://github.com/oneQAQone/QFun) 下载并部署 QFun，登录你的机器人账号
+2. 确认 QFun 的**插件目录**位置（QFun 安装目录下的 `plugin/` 文件夹）
+3. 机器人需要能在目标群里正常收发消息
+
+### 2.2 下载插件包
+
+任选一种：
+
+- **Releases（推荐）**：在仓库 Releases 页面下载 `Regent-DREX-v4.2.zip`
+- **Actions 构建产物**：仓库 Actions 页面 → 最新 `Build` 任务 → Artifacts 下载
+- **自己打包**：下载源码后按[第八章](#八构建与发布github-actions)的说明本地打包
+
+### 2.3 导入插件
+
+压缩包解压后，目录结构应如下（**顶层文件夹名必须是 `Regent-DREX`**，也就是 `info.prop` 里的 `id`，改名会导致无法识别）：
+
+```
+Regent-DREX/
+├── info.prop      插件声明（id / 名称 / 作者 / 版本号）
+├── desc.txt       插件说明与更新日志（QFun 插件列表里展示）
+└── main.java      插件主体（源码不含注释，全部注释见本 README 第六章）
+```
+
+把整个 `Regent-DREX/` 文件夹移动进 QFun 的插件目录：
+
+```
+<QFun目录>/plugin/Regent-DREX/
+```
+
+然后在 QFun 里**重载插件/重启 QFun**，让插件加载。
+
+### 2.4 首次配置（必做）
+
+**设定宿主。** 插件首次运行后，会在插件目录下自动创建配置目录：
+
+```
+<QFun目录>/plugin/Regent-DREX/config/
+```
+
+在 `config/` 里新建 `owner.txt`，**第一行**写入宿主 QQ 号（5~12 位数字），例如：
+
+```
+123456789
+```
+
+说明：
+
+- `owner.txt` 在**插件加载时读取**，修改后需要重载插件或重启 QFun 才会生效
+- 未配置 `owner.txt` 时，默认以**机器人自己**为宿主（兜底，保证第一天上手就能用）
+- 宿主拥有全部权限，且**永远不会被任何管理指令操作**（包括其他管理）
+
+### 2.5 启用本群
+
+在群里发送：
+
+```
+/on
+```
+
+看到 `本群群管已启用` 即成功；重复发送会提示"已启用"。
+
+> 未启用的群，插件只会放行 `/on`（启用）与 `/master`（宿主专用），其他指令一律静默忽略。
+
+### 2.6 推荐的第一批设置
+
+```
+/set joincheck ask          # 入群命中黑名单先询问管理员（默认值，可省略）
+/set notifygroup 123456789  # 把命中提醒转发到管理群（可选，强烈推荐多群使用）
+/set mutetime 600           # 艾特禁言默认时长 600 秒（默认 600）
+/set warnlimit 3            # 警告达到 3 次自动踢（默认 3，范围 1-20）
+/toggle autoban on          # 退群自动拉黑（可选）
+/toggle muteonat on         # 成员艾特机器人即禁言（可选）
+/admin add @管理员A          # 添加代管（宿主/群主/管理员都可）
+```
+
+---
+
+## 三、指令大全（逐条详解）
+
+**通用规则**
+
+| 项目 | 规则 |
 |------|------|
-| User joins group | Checks the leave-blacklist and alliance ban list; kicks automatically on a hit |
-| User leaves group | When leave-blacklisting is on, adds the user to the blacklist |
-| User gets muted | When auto-unmute-delegates is on, unmutes a delegate who was muted |
+| 目标写法 | `@用户` / 直接写 QQ 号 / 引用一条消息（不写目标即作用于被引用者） |
+| 时长格式 | `30s`（秒）/ `15m`（分）/ `2h`（时）/ `1d`（天），最长 30 天（2592000 秒） |
+| 理由 | 任意文本，放在指令最后 |
+| 权限 | 宿主 ＞ 代管/群管 ＞ 成员；无权限调用一律**静默忽略**（不发任何提示） |
+| 未知指令 | 静默忽略 |
 
-## Storage Layout
+### 3.1 基础管理（代管/群管可用）
+
+| 指令 | 说明 |
+|------|------|
+| `/mute @用户 <时长> [理由]` | 禁言指定用户，例如 `/mute @张三 2h 刷屏` |
+| `/mute all` | 全体禁言 |
+| `/mute list` | 查看当前被禁言的成员列表 |
+| `/unmute @用户` | 解除单人禁言 |
+| `/unmute all` | 解除全体禁言 |
+| `/kick @用户 [理由]` | 踢出群（**不拉黑**，对方可以再进） |
+| `/ban @用户 [理由]` | 踢出并拉黑（俗称"踢黑"） |
+| `/warn @用户 [理由]` | 警告一次；达到阈值（默认 3 次，`/set warnlimit` 调整）自动踢出 |
+| `/warn list` | 查看本群警告记录 |
+| `/warn reset @用户` | 清空某人的警告次数 |
+| `/status` | 查看本群配置（启用状态、代管人数、黑名单人数、各类开关） |
+| `/help` | 帮助（按调用者权限显示对应区块） |
+
+### 3.2 黑名单管理（核心功能）
+
+黑名单分两个层面：**本群黑名单**（`setuser`）与**跨群黑名单**（`setgroup`，仅宿主）。命中黑名单的人：入群会被拦截/提醒、还可以用 `/ban check` 主动核对。
+
+| 指令 | 权限 | 说明 |
+|------|------|------|
+| `/ban setuser <QQ号...>` | 代管/群管 | 把号码加入**本群**黑名单，三种用法见下 |
+| `/ban setgroup <群号> <QQ号...>` | 仅宿主 | 把号码加入**指定群**的黑名单（跨群管理） |
+| `/ban list [群号]` | 代管看本群；跨群仅宿主 | 查看黑名单（谁、什么时候、谁拉的、什么理由） |
+| `/ban check [群号]` | 代管看本群；跨群仅宿主 | 核对本群成员是否命中黑名单；命中后回复 `yes` 一键踢出 |
+| `/ban kick [群号]` | 代管看本群；跨群仅宿主 | 不核对，直接把命中黑名单的**当前群成员**全部踢出 |
+| `/unban @用户` | 代管/群管 | 解除踢黑；也可以引用一条含号码的消息，把号码从黑名单移除 |
+
+**`/ban setuser` 的三种用法：**
+
+```
+① 引用一条【含号码】的消息：/ban setuser        → 自动提取正文里的号码并拉黑
+② 引用一条【不含号码】的消息：/ban setuser      → 直接拉黑被引用者本人
+③ 直接给号码：/ban setuser 123456,234567        → 拉黑给出的号码
+```
+
+**`/ban setgroup` 的用法：** 群号必须写在最前面，后面的号码只当 QQ 号识别；同样支持引用一条含号码的消息后发送。
+
+```
+/ban setgroup 987654321 123456,234567
+```
+
+**号码识别规则：**
+
+- 分隔符支持：换行 / 空格 / `,` / `，` / `|` / `、` / `；`
+- 正文里写 `#123456#`、`【123456】`、`「123456」`、`*123456*`、`<123456>`、`$123456$`、`〖123456〗` 这类**标记**时，只认被标记的号码（避免把日期、价格误判成 QQ 号）
+- 号码长度按 5~12 位识别
+
+**`/ban check` 的两种形态与 yes 流程：**
+
+- 不引用消息：核对**本群成员**有没有命中黑名单，列出命中名单
+- 引用消息：改为检查**正文里的号码**是否在黑名单上
+- 有命中时，管理员在 **60 秒内**回复 `yes` 即可一键踢出全部命中者；超时会提示重新执行 `/ban check`
+- 谁可以回 `yes`：本群宿主/代管（通知群模式下，目标群的管理也可以）
+
+### 3.3 查询
+
+| 指令 | 权限 | 说明 |
+|------|------|------|
+| `/look admin [群号]` | 成员均可看本群；跨群仅宿主 | 查看管理权限名单：代管（宿主添加）、本地（群内管理员添加）、自动（系统识别的群主/管理员） |
+
+### 3.4 配置
+
+| 指令 | 说明 |
+|------|------|
+| `/set mutetime <秒>` | 艾特禁言 / 默认禁言使用的时长（默认 600 秒） |
+| `/set warnlimit <次数>` | 警告阈值，范围 1-20（默认 3） |
+| `/set joincheck kick\|ask\|off` | 入群命中黑名单的处理方式：`kick`=直接踢、`ask`=提醒并询问（默认）、`off`=不处理 |
+| `/set notifygroup <群号>` | 把入群命中提醒转发到该群；`/set notifygroup off` 关闭 |
+| `/toggle muteonat on\|off` | 成员艾特机器人即禁言（默认关） |
+| `/toggle autoban on\|off` | 成员退群自动拉黑（默认关） |
+| `/toggle unmutedelegate on\|off` | 代管被禁言时自动解禁（默认关） |
+
+> `/set` 与 `/toggle` 仅代管/群管可用；写操作会记录日志。
+
+### 3.5 代管与联盟（宿主向）
+
+| 指令 | 权限 | 说明 |
+|------|------|------|
+| `/admin add @用户` | 宿主 / 群主 / 管理员 | 添加代管。**在本群执行 = 加入本群本地名单**；宿主带群号可在任意群跨群管理 |
+| `/admin rm @用户` | 同上 | 移除代管；`rm` 的目标不在宿主名单时自动从本地名单移除 |
+| `/admin list [群号]` | 同上 | 查看代管名单（标注来源：本地 / 自动 / 宿主） |
+| `/admin clear [群号]` | 仅宿主 | 清空某群的代管名单 |
+| `/alliance add` | 仅宿主 | 把**本群**加入联盟 |
+| `/alliance rm` | 仅宿主 | 把**本群**移出联盟 |
+| `/alliance list` | 仅宿主 | 查看联盟群列表 |
+| `/fban @用户 [理由]` | 代管/群管 | 联盟封禁：把用户加入联盟封禁名单，并从**所有联盟群**踢出 |
+| `/unfban @用户 [原因]` | 代管/群管 | 解除联盟封禁 |
+| `/on` / `/off` | 仅宿主 | 启用 / 禁用本群群管 |
+
+### 3.6 隐藏指令 `/master`（仅宿主）
+
+不显示在任何帮助里，**仅名单宿主可用；其他人调用没有任何反应**（不泄密、不提示）：
+
+| 指令 | 说明 |
+|------|------|
+| `/master add <QQ>` | 把 QQ 加入最高权限名单（等效宿主权限，可执行全部指令） |
+| `/master rm <QQ>` | 把 QQ 移出名单；**名单里的人也可以自己移除自己** |
+| `/master help` | 显示这条帮助（裸发 `/master` 同效） |
+
+> 名单存在 `config/mater.txt`，一行一个 QQ 号；名单成员享受宿主级权限，但**不能 add/rm 别人**（只能自删）。
+> 名单管理仅限真宿主（`owner.txt` 里那个人）。未启用群管时 `/master` 依然可用（方便救场）。
+
+---
+
+## 四、权限模型与保护规则
+
+### 4.1 角色与权限
+
+| 角色 | 来源 | 权限 |
+|------|------|------|
+| 宿主 | `config/owner.txt`（未配置=机器人自己） | 全部指令 |
+| 最高名单 | `config/mater.txt`（`/master` 管理） | 与宿主等效，但不能管理名单 |
+| 自动群管 | 系统识别群主/管理员，存 `autoadmin/` | 管理指令 + 维护本群本地名单 |
+| 代管 | `config/delegates/{群号}.txt`（宿主添加） | 管理指令（不含 `/on` `/off` `/admin` 跨群 `/alliance`） |
+| 本地代管 | `config/localadmin/{群号}.txt`（群内管理员自助添加） | 同上 |
+| 普通成员 | — | `/help`、`/look admin` |
+
+### 4.2 保护规则
+
+- **宿主永远不会被任何管理指令操作**（尝试操作会提示"不能操作宿主"）
+- **代管（含自动/本地）进入保护池**：任何人（包括宿主）都不能通过 `/mute` `/kick` `/ban` 操作他们
+- **代管不能操作其他代管**（含自动群管）
+- 无权限调用 → **静默忽略**，不发任何消息
+- 未知指令 → **静默忽略**，不发任何消息
+- 重复 `/on` `/off` → 提示已启用/已禁用
+
+---
+
+## 五、存储结构与运行机制
+
+### 5.1 配置目录
+
+插件目录下 `config/`：
 
 ```
 config/
-├── enabled_sessions.txt    # Sessions where administration is enabled
-├── delegates/list.txt      # Delegate list
-├── banlist/{group}.txt     # Leave-blacklist per group
-├── group_config/{group}.json # Per-group settings
-├── alliance.txt            # Alliance group list
-├── fban_list.txt           # Alliance ban list
-└── global_config.json      # Global configuration
+├── owner.txt               宿主 QQ 号（插件加载时读取）
+├── mater.txt               最高权限名单（/master 管理）
+├── enabled_sessions.txt    已启用群管的本群列表（/on /off 维护）
+├── alliance.txt            联盟群列表
+├── fban_list.txt           联盟封禁名单
+├── global_config.json      全局配置
+├── group_config/{群号}.json  本群配置（/set、/toggle 写入）
+├── banlist/{群号}.txt      本群黑名单
+├── warn/{群号}.txt         本群警告记录
+├── delegates/{群号}.txt    宿主添加的代管名单
+├── autoadmin/{群号}.txt    自动识别的群主/管理员名单
+├── localadmin/{群号}.txt   群内管理员自助维护的本地代管名单
+└── log/{群号}.txt          操作日志（只写文件，无查看指令）
 ```
 
-## Author
+> 升级插件时**不要删除整个插件文件夹**，保留 `config/` 目录即可无损升级（见 FAQ）。
 
-YiJieqwq — released under the MIT License.
+### 5.2 黑名单文件格式
+
+每行一条：
+
+```
+QQ号;时间;操作人;理由
+```
+
+兼容旧格式 `QQ号|时间|操作人|理由` 与裸 QQ 号（老数据仍然能识别）。
+
+### 5.3 入群命中处理（joincheck）
+
+成员入群时，插件会检查 **本群黑名单**（以及退群拉黑、联盟封禁等在各自场景下触发）：
+
+| joincheck | 行为 |
+|-----------|------|
+| `kick` | 命中即直接踢出 |
+| `ask`（默认） | 发送提醒，管理员回复 `yes` 一键踢出（60 秒内） |
+| `off` | 不处理 |
+
+**通知群机制（v4.1 起）：**
+
+- **已设通知群**（`/set notifygroup <群号>`）：命中提醒**只发到通知群**，本群保持安静；`yes` 确认也只在通知群生效
+- **未设通知群**：提醒发在本群，在本群回复 `yes` 生效
+- 提醒文案包含：命中者昵称(QQ)、名单来源标识、时间、拉黑理由，并提示回复 `yes` 踢出
+  - 本群副本标识：`本群黑名单`
+  - 转发副本标识：`群名(群号) 黑名单`（无法取到群名时退化为 `群号 黑名单`）
+- 在通知群里回复 `yes` 时，**目标群的管理员/群主/代管**也可以确认（跨群确认权限）
+
+### 5.4 其他机制
+
+- **昵称缓存**：成员昵称带 60 秒缓存，避免每条指令都同步查询
+- **@ 提及**：所有操作回执带 `[atUin=xxx]`，QQ 里显示为蓝色可点击的艾特
+- **日志**：所有管理操作（指令、入群/退群、自动动作）异步写入 `config/log/{群号}.txt`，文件超过 2000 行自动只保留最近 1000 行
+- **待确认列表**：`/ban check` 的 yes 确认数据保存在内存中（60 秒超时），重启插件即失效
+
+---
+
+## 六、源码注释总览
+
+> `main.java` 本体已按需求**全部去除注释**，方便直接粘贴进 QFun 使用；原注释完整整理如下（按源码顺序、按模块分组）。每条注释后的"行"为它在带注释原稿中的位置，仅供追溯。
+
+- Regent-DREX v4.2 - QQ 群管指令系统  *(行 2)*
+
+- 运行环境: QFun 脚本引擎 (BeanShell, Java 8 语法)  *(行 3)*
+
+- 指令说明与更新日志见同目录 desc.txt  *(行 4)*
+
+
+### 常量
+
+
+### 缓存
+
+
+- 宿主 QQ 号, 从 config/owner.txt 读取; 未配置时退回 myUin  *(行 25)*
+
+- 全局最高权限 mater 列表, 从 config/mater.txt 读取  *(行 28)*
+
+- /ban check 交互确认: groupId -> Map("hits"/"misses"/"target"), 超时 60 秒  *(行 31)*
+
+
+### 基础 IO
+
+#### `dbg()`
+
+- 调试日志: 统一走双参 log, 规避单参重载不确定的问题  *(行 38)*
+
+#### `now()`
+
+- 当前时间字符串 yyyy-MM-dd HH:mm:ss  *(行 43)*
+
+
+### 消息发送
+
+#### `sendFeedback()`
+
+- 向群发送普通文本消息  *(行 50)*
+
+#### `sendReplyFeedback()`
+
+- 优先以引用方式回复, 失败退化为普通消息  *(行 59)*
+
+#### `readAll()`
+
+- 读取整个文本文件(UTF-8), 不存在返回空串  *(行 77)*
+
+#### `readLines()`
+
+- 按行读取并过滤空行(UTF-8)  *(行 96)*
+
+#### `appendLine()`
+
+- 追加一行(UTF-8)  *(行 109)*
+
+#### `removeLine()`
+
+- 删除与目标完全相同的行  *(行 125)*
+
+#### `writeLinesAtomic()`
+
+- 原子写入多行: 先写 .tmp 再改名, 避免中断截断  *(行 133)*
+
+#### `writeTextAtomic()`
+
+- 原子写入文本  *(行 145)*
+
+#### `containsLine()`
+
+- 文件中是否存在该行  *(行 166)*
+
+
+### 路径
+
+#### `getConfigDir()`
+
+- 配置根目录, 不存在则创建  *(行 173)*
+
+#### `getDelegateFile()`
+
+- 本群手动代管名单文件 (/admin 管理)  *(行 182)*
+
+#### `getAutoAdminFile()`
+
+- 本群自动识别的群主/管理员名单文件 (由 syncGroupAdmins 全量维护)  *(行 189)*
+
+#### `getLocalAdminFile()`
+
+- 本群本地名单文件 (由群内管理员/群主通过 /admin 维护, 成员同样获得代管权限)  *(行 196)*
+
+#### `getBanFile()`
+
+- 本群黑名单文件  *(行 203)*
+
+#### `getWarnFile()`
+
+- 本群警告记录文件  *(行 210)*
+
+#### `getGroupConfigFile()`
+
+- 本群配置 JSON 文件  *(行 220)*
+
+
+### 配置
+
+#### `getGroupConfig()`
+
+- 取群配置项, 缺省返回 def  *(行 248)*
+
+#### `getGroupConfigInt()`
+
+- 取群配置项并转 int  *(行 260)*
+
+#### `setGroupConfig()`
+
+- 写群配置, value 为 null 时删除该键  *(行 269)*
+
+#### `loadGlobalCfg()`
+
+- 读取全局配置(带内存缓存)  *(行 281)*
+
+#### `getGlobalConfig()`
+
+- 取全局配置项  *(行 299)*
+
+#### `setGlobalConfig()`
+
+- 写全局配置  *(行 310)*
+
+#### `isEnabled()`
+
+- 群功能开关是否为 on  *(行 322)*
+
+#### `getEnabledSessions()`
+
+- 会话启用状态在内存中缓存: onMsg 在 IO 线程执行, 不能每条消息都读盘  *(行 327)*
+
+#### `isSessionEnabled()`
+
+- 本群是否已启用群管  *(行 337)*
+
+#### `setSessionEnabled()`
+
+- 启用/禁用本群群管  *(行 342)*
+
+
+### 联盟
+
+#### `addAllianceGroup()`
+
+- 把本群加入联盟  *(行 360)*
+
+
+### 联盟封禁
+
+#### `addFbanUser()`
+
+- 存储格式: uin;时间;操作人;理由 (兼容旧版 | 分隔)  *(行 373)*
+
+#### `removeFbanUser()`
+
+- 移除联盟封禁记录  *(行 387)*
+
+#### `isFbanUser()`
+
+- 是否在联盟封禁名单  *(行 399)*
+
+#### `getFbanReason()`
+
+- 取联盟封禁理由  *(行 408)*
+
+
+### 群黑名单
+
+#### `addBan()`
+
+- 存储格式: uin;时间;操作人;理由 (兼容旧版 | 分隔与只有 uin 的行)  *(行 422)*
+
+#### `removeBan()`
+
+- 从本群黑名单移除  *(行 436)*
+
+#### `isBanned()`
+
+- 是否在本群黑名单  *(行 448)*
+
+
+### 警告
+
+#### `getWarnCount()`
+
+- 存储格式: uin|次数|最后时间  *(行 460)*
+
+#### `addWarn()`
+
+- 警告次数 +1, 返回新次数  *(行 473)*
+
+#### `resetWarn()`
+
+- 清空某人警告记录  *(行 494)*
+
+
+### 小工具
+
+#### `firstField()`
+
+- 取记录第一段(通常是 QQ 号), 兼容 ; 与 | 两种分隔  *(行 511)*
+
+#### `safe()`
+
+- 清理换行与分隔符(; 与 |), 防止破坏存储格式  *(行 525)*
+
+#### `splitFields()`
+
+- 拆分黑名单记录: 新版 ; 分隔, 旧版 | 分隔, 更旧只有 uin  *(行 531)*
+
+#### `banTimeOf()`
+
+- 取黑名单中某人的拉黑时间, 无则返回空  *(行 539)*
+
+
+### 权限
+
+#### `loadOwnerUin()`
+
+- 从 config/owner.txt 读取宿主 QQ; 文件不存在或无效时保持 null  *(行 554)*
+
+#### `loadMaterList()`
+
+- 从 config/mater.txt 读取全局最高权限列表  *(行 570)*
+
+#### `syncGroupAdmins()`
+
+- 扫描群成员列表, 把群主/管理员全量写入独立的自动识别名单  *(行 585)*
+
+- 升职者自动加入, 降职/退群者自动移除; 手动代管名单不受影响  *(行 586)*
+
+- 探测 role 字段: 常见名 role / memberRole / administrator  *(行 602)*
+
+- 群必有群主, 正常识别结果非空; 为空视为识别失败, 保留旧名单  *(行 613)*
+
+#### `isOwner()`
+
+- 是否宿主本人: 优先检查 config/owner.txt, 再检查 mater 列表, 未配置时退回 myUin  *(行 620)*
+
+#### `isListMaster()`
+
+- 名单管理者(仅其可 add/rm 他人): owner.txt 宿主, 未配置时机器人自己; mater 不在其列  *(行 628)*
+
+#### `isDelegate()`
+
+- 是否本群代管(宿主也返回 true, 含自动识别的群主/管理员与群内管理员添加的本地名单)  *(行 635)*
+
+#### `canManageLocal()`
+
+- 是否可维护本群本地名单: 宿主/mater 或系统识别的本群管理员/群主  *(行 644)*
+
+#### `getAllDelegates()`
+
+- 合并名单: 手动代管在前, 本地名单与自动识别的群主/管理员在后(去重)  *(行 651)*
+
+#### `renderAdminList()`
+
+- 合并展示代管名单: 手动(无标签) / 本地[本地] / 自动[自动]  *(行 667)*
+
+#### `isOwnerOrDelegate()`
+
+- 是否具备管理权限  *(行 701)*
+
+#### `isProtected()`
+
+- 目标是否受保护: 宿主与代管不可被任何指令操作  *(行 706)*
+
+#### `canOperate()`
+
+- 操作人是否有权对目标执行管理动作  *(行 713)*
+
+#### `checkTarget()`
+
+- 统一目标校验, 不通过时直接回执并返回 false  *(行 721)*
+
+
+### 成员信息
+
+#### `nm()`
+
+- 昵称查询: 宿主 getMemberInfo 内部是 runBlocking 的同步查询,  *(行 740)*
+
+- 而回调运行在 IO 线程, 每次都打会明显拖慢消息处理, 故加 60 秒缓存  *(行 741)*
+
+#### `queryName()`
+
+- 实际查询昵称: 先群成员, 再好友备注/昵称  *(行 761)*
+
+#### `roleZh()`
+
+- 角色英文转中文  *(行 798)*
+
+#### `formatTs()`
+
+- 秒级时间戳转日期  *(行 806)*
+
+#### `toLong()`
+
+- 安全转 long, 失败返回 0  *(行 816)*
+
+#### `optField()`
+
+- 探测可选字段: 宿主版本差异导致字段不存在时, 直接访问会抛 EvalError(继承 Error,  *(行 826)*
+
+- catch (Exception) 抓不住), 必须先探测再取值  *(行 827)*
+
+
+### 引用消息
+
+#### `optField()`
+
+- MsgData 本身不暴露引用字段, 但 msg.data 是原始 MsgRecord,  *(行 839)*
+
+- 其 elements 中可能含引用元素。QQ 各版本字段名不一致, 故按关键字反射扫描, 不写死名字。  *(行 840)*
+
+#### `needsTarget()`
+
+- 该指令是否需要操作目标(决定是否尝试解析引用)  *(行 844)*
+
+#### `findFieldLike()`
+
+- 反射查找名字含关键字的非空字段  *(行 861)*
+
+#### `tryUid()`
+
+- 把可能是 uid 的值转换为 QQ 号  *(行 878)*
+
+#### `pickUin()`
+
+- 从引用元素中挑出被引用者的 QQ 号  *(行 891)*
+
+- 真机元素常见 senderUid:Long + senderUidStr:String(uid 形式), 旧模拟/其他版本为 senderUin 数字字段;  *(行 892)*
+
+- 逐个候选尝试(数字 uin 字段直接用, uid 值走 getUinFromUid 转换), 不再只试第一个候选  *(行 893)*
+
+- 跳过 BeanShell 给脚本类注入的 _bshThisXxx / _bshStaticXxx  *(行 905)*
+
+- 数字 uin 字段直接可用, 优先级最高  *(行 913)*
+
+#### `getQuotedSenderUin()`
+
+- 从 msg.data.elements 解析被引用消息的作者  *(行 940)*
+
+#### `getReplyElement()`
+
+- 取引用元素对象(第一个含 repl 字段的元素)  *(行 962)*
+
+#### `dumpFields()`
+
+- 反射列出字段名与类型, 用于排查 QQ 版本差异  *(行 982)*
+
+#### `dumpUidValues()`
+
+- 列出 uid/uin 相关字段的实际值, 供真机排查引用提取失败  *(行 997)*
+
+#### `getQuotedQqs()`
+
+- 从被引用消息的正文中提取 QQ 号  *(行 1016)*
+
+- 正文所在字段名各 QQ 版本不一致, 故扫描全部字符串字段;  *(行 1017)*
+
+- 时间/序号类字段的值会被排除, 避免把时间戳误当 QQ 号  *(行 1018)*
+
+- 1) 优先取带标记的号码, 避免把日期/价格等误当 QQ 号  *(行 1048)*
+
+- 支持 #123456# / 【123456】 / 「123456」 / *123456* / <123456> / $123456$ / 〖123456〗  *(行 1049)*
+
+- 全角 #＃ 也认  *(行 1050)*
+
+- 2) 没有任何标记时, 退回提取全部 5-12 位数字  *(行 1072)*
+
+- 前后加数字边界断言, 避免把 13 位以上的长数字截成 12 位  *(行 1073)*
+
+
+### 时间
+
+#### `parseTimeToSeconds()`
+
+- 解析 30s/15m/2h/1d, 非法或超范围返回 -1  *(行 1086)*
+
+#### `formatTime()`
+
+- 秒数转可读时长  *(行 1109)*
+
+
+### 参数解析
+
+#### `formatTime()`
+
+- (行内) targets 里来自 @ 的个数(排在最前), 其余为用户输入的号码  *(行 1137)*
+
+- (行内) targets 里含 onMsg 补位的"被引用者本人"  *(行 1138)*
+
+- (行内) 被引用消息的作者, 供 /ban add 等使用  *(行 1139)*
+
+- (行内) 被引用消息正文中出现的 QQ 号  *(行 1140)*
+
+- (行内) 本条消息是否引用了其它消息  *(行 1141)*
+
+#### `isAtToken()`
+
+- 是否是 @ 相关的文本片段  *(行 1146)*
+
+#### `parseCommand()`
+
+- 解析指令: 命令/子命令/目标/时长/理由  *(行 1155)*
+
+- 目标: 来自 atList, 排除机器人自身  *(行 1199)*
+
+- 跳过 @ 标记  *(行 1212)*
+
+- 直接输入的 UIN  *(行 1215)*
+
+- 时间 (必须带单位, 避免与 UIN 歧义)  *(行 1221)*
+
+- 剩余全部作为理由, 不再丢弃  *(行 1228)*
+
+
+### 操作日志
+
+#### `getLogFile()`
+
+- 本群日志文件  *(行 1244)*
+
+#### `nameOf()`
+
+- 日志用: 数字 QQ 转昵称, 非 QQ 原样返回  *(行 1251)*
+
+#### `actionZh()`
+
+- 指令名 -> 中文动作名, 便于阅读与筛选  *(行 1258)*
+
+#### `writeLog()`
+
+- 写一条群管日志  *(行 1292)*
+
+#### `trimLog()`
+
+- 日志超过 2000 行时只保留最近 1000 行  *(行 1315)*
+
+
+### 业务动作
+
+#### `doMute()`
+
+- 执行禁言: 调用 API + 回执 + 记日志  *(行 1326)*
+
+#### `doUnmute()`
+
+- 执行解禁  *(行 1345)*
+
+#### `doKick()`
+
+- 执行踢出  *(行 1358)*
+
+#### `doBan()`
+
+- 执行踢黑: 踢出并写入本群黑名单  *(行 1375)*
+
+#### `doFban()`
+
+- 联盟封禁: 踢出并广播到所有联盟群  *(行 1393)*
+
+
+### 列表展示
+
+#### `showMuteList()`
+
+- 展示禁言列表(含剩余时长)  *(行 1422)*
+
+- 按属性直接访问, 不引用宿主类名, 避免类解析失败  *(行 1434)*
+
+#### `showBanList()`
+
+- 展示指定群的黑名单, 支持跨群查看  *(行 1453)*
+
+#### `getBanUins()`
+
+- 取黑名单中的 QQ 号集合  *(行 1478)*
+
+#### `banReasonOf()`
+
+- 取黑名单中某人的理由  *(行 1486)*
+
+#### `checkQuotedQqsAgainstBan()`
+
+- 检查引用消息正文里的 QQ 号列表，输出哪些在黑名单上、哪些不在  *(行 1499)*
+
+- 有命中时存储待处理列表，供 yes/add 确认  *(行 1534)*
+
+#### `checkBannedMembers()`
+
+- 核对本群成员是否命中指定群的黑名单; doKick=true 时直接一键踢出  *(行 1550)*
+
+- 存储待处理列表，供 yes/add 确认使用  *(行 1589)*
+
+
+### /set /toggle
+
+#### `handleSet()`
+
+- 处理 /set: 需原始文本, 故在解析前分流  *(行 1627)*
+
+#### `handleToggle()`
+
+- 处理 /toggle 开关  *(行 1696)*
+
+#### `handleLook()`
+
+- 处理 /look admin [群号]: 查看管理权限名单(本群任何人可查, 跨群仅宿主)  *(行 1737)*
+
+
+### 指令注册
+
+#### `initHandlers()`
+
+- 注册全部指令处理器  *(行 1767)*
+
+
+### /mute
+
+
+### /unmute
+
+#### `handle()`
+
+- 解禁是非破坏性操作, 只拒绝宿主, 允许管理员解开代管的禁言  *(行 1834)*
+
+
+### /kick
+
+
+### /ban
+
+#### `handle()`
+
+- /ban setuser [QQ号...]: 只作用于本群, 号码只当 QQ 号(引用时从正文提取)  *(行 1871)*
+
+- /ban setgroup <群号> [QQ号...]: 群号必须写在最前, 其余只当 QQ 号; 跨群仅宿主  *(行 1872)*
+
+- 用户实际输入的号码(不含 @ 目标和引用补位): 第一个是群号, 后面的都是 QQ 号  *(行 1880)*
+
+- @ 的人也算要拉黑的 QQ 号  *(行 1896)*
+
+- 号码一律当 QQ 号; 引用时优先用正文里的号码, 正文没有号码则拉黑被引用者本人  *(行 1905)*
+
+- 可选群号参数, 缺省为本群  *(行 1981)*
+
+- /ban check 引用消息: 检查正文里的 QQ 号是否在黑名单上  *(行 1994)*
+
+
+### /unban
+
+#### `handle()`
+
+- 引用一条含 QQ 号的消息时, 直接移除正文中的这些 QQ 号  *(行 2022)*
+
+
+### /warn
+
+
+### /admin
+
+#### `handle()`
+
+- 判断跨群模式: /admin add|rm [群号] @用户 / QQ  *(行 2137)*
+
+
+### /alliance
+
+
+### /fban
+
+
+### /unfban
+
+
+### /status
+
+
+### /on
+
+
+### /off
+
+
+### /help
+
+
+### 事件回调
+
+#### `joinCheckZh()`
+
+- 入群处理方式转中文  *(行 2501)*
+
+#### `notifyJoinHit()`
+
+- 入群命中黑名单: 不直接踢, 发提醒并询问是否踢出(回复 yes); 设了通知群只发通知群, 否则发本群  *(行 2508)*
+
+- @ 宿主与代管提醒(不再 @ 机器人自己)  *(行 2522)*
+
+- 待确认: 回复 yes 一键踢出; 设了通知群时只在通知群提醒与确认  *(行 2537)*
+
+- 已设通知群: 本群不再提醒, 提醒与 yes 确认都在通知群  *(行 2547)*
+
+- 未设通知群: 提醒与 yes 确认都在本群  *(行 2558)*
+
+#### `groupNameOf()`
+
+- 读取群名称, 失败返回空字符串  *(行 2565)*
+
+#### `clearPendingCheck()`
+
+- 清理某群的待确认操作(含通知群别名键)  *(行 2579)*
+
+#### `joinGroup()`
+
+- 入群回调: 黑名单/联盟封禁处理 + 欢迎语  *(行 2597)*
+
+- 黑名单处理方式: kick=直接踢 / ask=询问管理员(默认) / off=不处理  *(行 2603)*
+
+#### `quitGroup()`
+
+- 退群回调: 记录日志 + 可选自动拉黑  *(行 2632)*
+
+- 退群者若为原群主/管理员(在自动识别名单中), 立即刷新名单移除  *(行 2644)*
+
+#### `shutUpGroup()`
+
+- 官方回调名: shutUpGroup(群号, 成员QQ, 时间, 操作者QQ)  *(行 2653)*
+
+- 机器人自己发起的禁言已由指令侧记录, 这里只补记外部管理员的操作  *(行 2659)*
+
+
+### 主入口
+
+
+### 消息入口: 门禁 -> 分流 -> 解析 -> 引用补目标 -> 分发
+
+#### `onMsg()`
+
+- /ban check 与入群提醒的 yes/add 确认  *(行 2702)*
+
+- 权限: 当前群的宿主/代管, 或目标群的宿主/代管(在通知群里由本群代管确认)  *(行 2712)*
+
+- add: 把未命中者加入目标群黑名单  *(行 2754)*
+
+- 跨群添加仅宿主  *(行 2761)*
+
+- 未启用的会话只放行 /on 和 /master; 宿主可 /look 自查  *(行 2796)*
+
+- 需要原始文本的指令, 在解析前分流  *(行 2804)*
+
+- /look admin [群号]: 查看管理权限名单  *(行 2814)*
+
+- 隐藏指令: /master add|rm|help (仅名单宿主可管他人, mater 可自删; 不在 help/desc 中显示)  *(行 2820)*
+
+- master 帮助: 仅名单宿主可见, 别人呼出不显示任何内容  *(行 2826)*
+
+- 用 atMap 把 "@昵称" 文本整体剔除, 昵称含空格时不会污染理由  *(行 2875)*
+
+- 注意两点: 1) atMap 为可选字段, 必须先探测; 2) 不能迭代 values()/keySet(),  *(行 2876)*
+
+- 其返回的 HashMap$Values 是包私有类, 反射调用 iterator() 会抛 EvalError  *(行 2877)*
+
+- 名单类指令允许用换行/逗号/竖线/顿号分隔, 统一转成空格再解析  *(行 2903)*
+
+- 解析被引用消息: 作者用于"无 @ 时补目标", 正文用于 /ban add|setuser|setgroup 与 /unban  *(行 2915)*
+
+- 无 @ 目标, 且引用正文里也没取到 QQ 号时, 才退化为"作用于被引用者本人"  *(行 2939)*
+
+
+### 非指令
+
+#### `onMsg()`
+
+- 艾特禁言: 普通成员艾特机器人即被禁言  *(行 2956)*
+
+#### `atMe()`
+
+- 消息是否艾特了机器人  *(行 2970)*
+
+
+### 生命周期
+
+#### `unLoadPlugin()`
+
+- 卸载回调: 清理各类缓存  *(行 2986)*
+
+
+### 初始化
+
+#### `migrateLegacyDelegates()`
+
+- 把旧版全局代管名单迁移到各群并归档原文件  *(行 2999)*
+
+- 对已启用的群自动同步 QQ 管理员/群主到代管列表  *(行 3034)*
+
+---
+
+## 七、更新日志
+
+```
+4.2  隐藏指令调整：内部名单管理命令更名（不在帮助中显示）；删除 /log 指令（日志仍写入本地文件）
+4.1  已设通知群时本群不再提醒：入群命中提醒只发通知群，yes 确认也只在通知群；未设通知群的群仍在本群提醒
+4.0  入群提醒转发副本去掉"群"前缀，直接显示 群名(群号) 黑名单
+3.9  入群提醒文案分开：本群副本显示"本群黑名单"，仅转发到通知群的副本用 群名(群号) 标识来源群
+3.8  引用提取增强：uid→QQ 转换修复真机 /ban 引用取不到被引用者；引用正文无号码时直接拉黑被引用者本人
+3.7  入群提醒群标识顺序调整为 群名(群号)
+3.6  入群提醒升级：显示来源群(群号+群名)/时间/理由，回复 yes 直接踢出，不再@机器人；黑名单分隔符改为 ;（兼容旧格式）
+3.5  删除 /toggle selftitle 自助头衔、/set welcome 入群欢迎语
+3.4  删除 /whois 成员信息、/inactive 不活跃统计、/rename 改群名片
+3.3  /ban 拆分：setuser 只作用于本群且号码只当 QQ 号；新增 /ban setgroup <群号> <QQ号...> 跨群拉黑（仅宿主）
+3.2  /look admin 查看管理权限名单；群内管理员/群主可自行维护本群本地代管名单(localadmin/)
+3.1  自动识别名单独立存放(autoadmin/)：群主/管理员升职自动加入、降职或退群自动移除；/admin 跨群语法进帮助
+3.0  每群独立代管名单；群主/管理员自动识别加入；/admin 支持跨群管理
+2.5  跨群黑名单查看/核对/一键踢出；入群命中改为可配置，默认询问管理员
+2.4  群管日志：记录谁对谁做了什么，含其他管理员的直接禁言
+2.3  移除投票功能；支持引用消息直接操作
+2.2  昵称加缓存，避免每条指令多次同步查询
+2.1  会话状态内存缓存、昵称属性直读、@昵称去噪
+2.0  修复 14 处缺陷，新增 unban / warn / log / whois
+```
+
+> 更早的 1.x 版本为原作者历史版本，见[原仓库](https://github.com/YiJieqwq/Regent-DREX-QFPlugin)。
+> 自 v4.2 起，本仓库通过 GitHub Actions 自动构建并提供 Release 下载。
+
+---
+
+## 八、构建与发布（GitHub Actions）
+
+本仓库自带 GitHub Actions 工作流（`.github/workflows/build.yml`），每次推送自动把 `plugin/` 打包成 **QFun 可直接安装的标准格式**（与本地打包脚本完全一致的 zip 结构）：
+
+```
+Regent-DREX/          ← 顶层文件夹（来自 info.prop 的 id）
+├── info.prop
+├── desc.txt
+└── main.java
+```
+
+### 触发方式
+
+| 方式 | 行为 |
+|------|------|
+| push 到 `main` | 构建 zip + 上传 Artifact（Actions 页面可下载） |
+| 推送 `v*` 标签（如 `v4.2`） | 构建 + **自动创建 Release 并附带 zip 与 SHA256** |
+| 手动 `Run workflow` | 和 push 一样构建 |
+
+### 发布一个新版本（维护者）
+
+```bash
+# 1. 修改 plugin/info.prop 的 versionCode（如 4.3）与 plugin/desc.txt 的更新日志
+# 2. 提交并推送
+# 3. 打标签推送即自动发布
+git tag v4.3
+git push origin v4.3
+```
+
+### 本地打包（离线等价方案）
+
+把 `info.prop`、`desc.txt`、`main.java` 放进一个名为 `Regent-DREX/` 的文件夹，压缩为 zip 即可：
+
+```bash
+mkdir -p Regent-DREX
+cp plugin/info.prop plugin/desc.txt plugin/main.java Regent-DREX/
+zip -r Regent-DREX-v4.2.zip Regent-DREX
+```
+
+> 注意：zip 的**顶层必须是 `Regent-DREX/` 文件夹**，不要直接把三个文件压平放在根目录。
+
+---
+
+## 九、常见问题（FAQ）
+
+**Q1：发了指令没反应？**
+按顺序检查：① 本群是否已 `/on` 启用；② `owner.txt` 是否配置正确（插件加载时读取）；③ 发送者是否有代管/群管权限。无权限和未知指令都是**设计上的静默忽略**，不会给任何提示。
+
+**Q2：`/on` 提示权限不足？**
+`owner.txt` 里的 QQ 号没写对（或没重载插件）。重新写好后重载插件再试。未配置时默认机器人自己是宿主。
+
+**Q3：@ 不到人 / 引用操作的是谁？**
+引用一条消息发送指令时，指令会作用于**被引用消息的发送者**。真机上如果取不到被引用者（QQ 客户端差异），v3.8 起已做 uid→QQ 号转换修复。
+
+**Q4：为什么拉黑的人入群没被踢？**
+检查 `joincheck` 设置：默认 `ask` 只发提醒，需要管理员回复 `yes`；`off` 则完全不处理。另外目标若本身就是代管/群管/宿主，会受保护不被动。
+
+**Q5：入群提醒为什么发到别的群了？**
+设置了 `notifygroup`（通知群）。v4.1 起：设了通知群 → 提醒只发通知群，本群不再提醒，`yes` 也只在通知群回复才有效。用 `/set notifygroup off` 可以关掉。
+
+**Q6：怎么升级新版本？**
+下载新版 zip，解压后用里面的三个文件（`info.prop` / `desc.txt` / `main.java`）覆盖旧文件即可，**配置目录 `config/` 原样保留**，数据不丢。建议升级前备份一份 `config/`。
+
+**Q7：`/log` 为什么没了？日志怎么看？**
+v4.2 起删除了 `/log` 查询指令；日志仍然完整写入插件目录下 `config/log/{群号}.txt`，直接到文件夹里查看即可。
+
+**Q8：数据怎么备份/迁移？**
+备份或迁移整个 `config/` 目录即可（宿主、代管、黑名单、警告、联盟、群配置都在里面）。
+
+**Q9：名单里的"最高权限"是什么？**
+隐藏的 `/master` 名单（`config/mater.txt`），只有名单宿主能维护，名单成员拥有与宿主等效的指令权限（但不能维护名单、不能被管理指令操作）。普通使用者无需关心。
+
+---
+
+## 十、许可与致谢
+
+- 本项目基于 **MIT License** 开源（见 [LICENSE](LICENSE)）
+- 原项目：[YiJieqwq/Regent-DREX-QFPlugin](https://github.com/YiJieqwq/Regent-DREX-QFPlugin)（作者 **YiJieqwq异界**），本仓库是在原版基础上的增强 Fork
+- 感谢 [QFun](https://github.com/oneQAQone/QFun) 提供的插件运行环境

@@ -1,47 +1,80 @@
-Regent-DREX v1.5
+Regent-DREX 群管系统 v4.2
 
-基于 DREX 指令路由的 QQ 群管系统，与墨鸦 Strata 同源。
+QQ 群管理指令插件。指令以 / 开头，目标可写 @用户、直接输入 QQ 号，
+或引用一条消息（不写目标即作用于被引用者）。
 
-项目链接: https://github.com/YiJieqwq/Regent-DREX-QFPlugin
-基于MIT协议开源
+权限：成员有 /help 与 /look admin，代管可执行管理指令，
+群内管理员/群主可维护本群本地代管名单，宿主可管全部代管与联盟。
 
-## 新增功能
-/vote mute @someone <时间> <理由>  投票禁言
-/vote kick/ban/fban @someone 理由  投票踢出
-/vote set count <人数>  管理设置投票所需人数
-/vote set timeout <时间(秒)>  管理设置投票保留时长
-/vote status  查看投票状态
-/vote cancel  取消当前投票
+【常用】
+/mute @用户 <时长> [理由]   禁言，30s / 15m / 2h / 1d
+/mute all                    全体禁言
+/mute list                   禁言列表
+/unmute @用户 | /unmute all  解禁
+/kick @用户 [理由]           踢出
+/ban @用户 [理由]            踢黑
+/unban @用户                 解除踢黑（也可引用含 QQ 号的消息直接移除）
+/warn @用户 [理由]           警告，达阈值自动踢
+/status                      查看本群配置
+/help                        帮助
 
-## 指令
-/mute @someone <时间> <理由(可选)>  禁言
-/mute all  全体禁言
-/mute list  禁言列表
-/unmute @someone  解禁
-/unmute all  全体解禁
-/kick @someone <理由(可选)>  踢出
-/ban @someone <理由(可选)>  踢黑
-/ban list  黑名单列表
-/admin add @someone  添加代管
-/admin rm @someone  移除代管
-/admin list  代管列表
-/admin clear 清空代管
-/alliance add  添加到联盟
-/alliance rm  从联盟中移除
-/fban @someone <理由(可选)>  联盟封禁
-/unfban @someone <原因(可选)>  撤销联盟封禁
-/toggle <功能名> on|off  设置功能
-/set mutetime <value>  设置默认禁言时长(无参数情况下)
-/status
-/help
+【黑名单】
+/ban setuser <QQ号...>  拉黑本群 QQ 号，三种用法：
+                     ① 引用一条含号码的消息，自动提取正文里的号码
+                     ② 引用一条不含号码的消息，直接拉黑被引用者本人
+                     ③ 直接跟号码列表：/ban setuser 123456,234567
+                     只作用于本群，号码只识别为 QQ 号
+/ban setgroup <群号> <QQ号...>  跨群拉黑（仅宿主）：
+                     群号必须写在最前，后面的号码只识别为 QQ 号
+                     也可引用一条含号码的消息后发送
+分隔符支持 换行 / 空格 / , / ， / | / 、；
+正文用 #123456# / 【123456】 / 「123456」 / *123456* / <123456> / $123456$ / 〖123456〗 标记时只认标记的号码，避免误判日期价格
+/ban list [群号]    查看黑名单，不带群号看本群
+/ban check [群号]   核对本群成员有没有命中该黑名单，命中后回复 yes 一键踢出；引用消息则检查正文号码是否在黑名单上
+/ban kick [群号]    把命中的人一键踢出
+跨群查看与操作仅宿主可用。
 
-## 参数
-时间格式： 30s 15m 2h 1d
-用户指定： @某人 或直接 UIN
-功能名： 
-muteonat 被艾特后禁言发出者
-autoban 被禁言者退群自动拉黑
-selftitle 自助头衔获取
-unmutedelegate 自动解禁代管
+【查询】
+/look admin [群号]           查看管理权限名单，不写群号=本群，跨群仅宿主
 
-保护规则： 宿主和代管均不可被操作，代管不能操作其他代管。无权限和未知指令直接忽略。
+【配置】
+/set mutetime <秒>           默认禁言时长
+/set warnlimit <次数>        警告阈值 1-20
+/set joincheck kick|ask|off  入群命中黑名单的处理方式，默认 ask
+/set notifygroup <群号>      入群询问同步转发到该群，off 关闭
+
+/toggle muteonat on|off      成员艾特机器人即禁言
+/toggle autoban on|off       退群自动拉黑
+/toggle unmutedelegate on|off 代管被禁言自动解禁
+
+【联盟与权限】
+/alliance add|rm|list        联盟群（仅宿主）
+/fban @用户 [理由]           联盟封禁，同步踢出所有联盟群
+/unfban @用户 [原因]         解除
+/admin add|rm|list|clear [群号]  代管管理（跨群仅宿主；群内管理员/群主可在本群 add|rm|list 维护本地名单；rm 不在宿主名单时自动从本地名单移除）
+/on | /off                   启用/禁用本群群管（仅宿主）
+
+【数据】
+config/ 下按群分文件：banlist、warn、log、delegates（手动代管）、localadmin（群内管理员添加的本地代管）、autoadmin（自动识别的群主/管理员）、group_config。
+config/owner.txt        写入宿主 QQ 号，一行一个；未配置时默认以机器人自己为宿主
+
+【更新日志】
+4.2  隐藏指令调整：内部名单管理命令更名（不在帮助中显示）；删除 /log 指令（日志仍写入本地文件）
+4.1  已设通知群时本群不再提醒：入群命中提醒只发通知群，yes 确认也只在通知群；未设通知群的群仍在本群提醒
+4.0  入群提醒转发副本去掉"群"前缀，直接显示 群名(群号) 黑名单
+3.9  入群提醒文案分开：本群副本显示"本群黑名单"，仅转发到通知群的副本用 群名(群号) 标识来源群
+3.8  引用提取增强：uid→QQ 转换修复真机 /ban 引用取不到被引用者；引用正文无号码时直接拉黑被引用者本人
+3.7  入群提醒群标识顺序调整为 群名(群号)
+3.6  入群提醒升级：显示来源群(群号+群名)/时间/理由，回复 yes 直接踢出，不再@机器人；黑名单分隔符改为 ;（兼容旧格式）
+3.5  删除 /toggle selftitle 自助头衔、/set welcome 入群欢迎语
+3.4  删除 /whois 成员信息、/inactive 不活跃统计、/rename 改群名片
+3.3  /ban 拆分：setuser 只作用于本群且号码只当 QQ 号；新增 /ban setgroup <群号> <QQ号...> 跨群拉黑（仅宿主）
+3.2  /look admin 查看管理权限名单；群内管理员/群主可自行维护本群本地代管名单(localadmin/)
+3.1  自动识别名单独立存放(autoadmin/)：群主/管理员升职自动加入、降职或退群自动移除；/admin 跨群语法进帮助
+3.0  每群独立代管名单；群主/管理员自动识别加入；/admin 支持跨群管理
+2.5  跨群黑名单查看/核对/一键踢出；入群命中改为可配置，默认询问管理员
+2.4  群管日志：记录谁对谁做了什么，含其他管理员的直接禁言
+2.3  移除投票功能；支持引用消息直接操作
+2.2  昵称加缓存，避免每条指令多次同步查询
+2.1  会话状态内存缓存、昵称属性直读、@昵称去噪
+2.0  修复 14 处缺陷，新增 unban / warn / log / whois
