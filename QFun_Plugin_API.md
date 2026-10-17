@@ -1,5 +1,7 @@
 # Plugin API
 
+> 本文转载自官方文档 [qfun.store/doc.php](https://qfun.store/doc.php)
+
 ## 简介
 
 脚本引擎基于 `BeanShell` ，支持java8语法，不支持注解 
