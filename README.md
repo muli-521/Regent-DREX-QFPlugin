@@ -1,6 +1,6 @@
 # Regent-DREX 群管系统（QFun 插件）
 
-> **Fork 增强版** · 当前版本 **v4.2** · 运行环境 [QFun](https://github.com/oneQAQone/QFun)（BeanShell 脚本引擎）
+> **Fork 增强版** · 当前版本 **v4.2.1** · 运行环境 [QFun](https://github.com/oneQAQone/QFun)（BeanShell 脚本引擎）
 >
 > 本项目 fork 自原作者 **YiJieqwq异界** 的 [Regent-DREX-QFPlugin](https://github.com/YiJieqwq/Regent-DREX-QFPlugin)（原版 v1.5），
 > 在原版的指令路由架构上持续增强：黑名单体系、入群拦截、通知群、代管体系、联盟封禁等全面重做。完整变更见[更新日志](#七更新日志)。
@@ -41,7 +41,7 @@
 
 ## 一、快速开始（三分钟上手）
 
-1. 从 [Releases](../../releases) 下载最新的 `Regent-DREX-v4.2.zip`
+1. 从 [Releases](../../releases) 下载最新的 `Regent-DREX-v4.2.1.zip`
 2. 解压后得到 `Regent-DREX/` 文件夹，整个放进 QFun 的插件目录（见第二章）
 3. 在群内发送 `/on` 启用本群群管
 4. 把宿主 QQ 号写进 `config/owner.txt`（不写则默认机器人自己是宿主）
@@ -70,7 +70,7 @@
 
 任选一种：
 
-- **Releases（推荐）**：在仓库 Releases 页面下载 `Regent-DREX-v4.2.zip`
+- **Releases（推荐）**：在仓库 Releases 页面下载 `Regent-DREX-v4.2.1.zip`
 - **Actions 构建产物**：仓库 Actions 页面 → 最新 `Build` 任务 → Artifacts 下载
 - **自己打包**：下载源码后按[第八章](#八构建与发布github-actions)的说明本地打包
 
@@ -1056,29 +1056,12 @@ QQ号;时间;操作人;理由
 ## 七、更新日志
 
 ```
+4.2.1 源码体积精简：main.java 压缩为紧凑格式（约 -26%），功能无变化
 4.2  隐藏指令调整：内部名单管理命令更名（不在帮助中显示）；删除 /log 指令（日志仍写入本地文件）
-4.1  已设通知群时本群不再提醒：入群命中提醒只发通知群，yes 确认也只在通知群；未设通知群的群仍在本群提醒
-4.0  入群提醒转发副本去掉"群"前缀，直接显示 群名(群号) 黑名单
-3.9  入群提醒文案分开：本群副本显示"本群黑名单"，仅转发到通知群的副本用 群名(群号) 标识来源群
-3.8  引用提取增强：uid→QQ 转换修复真机 /ban 引用取不到被引用者；引用正文无号码时直接拉黑被引用者本人
-3.7  入群提醒群标识顺序调整为 群名(群号)
-3.6  入群提醒升级：显示来源群(群号+群名)/时间/理由，回复 yes 直接踢出，不再@机器人；黑名单分隔符改为 ;（兼容旧格式）
-3.5  删除 /toggle selftitle 自助头衔、/set welcome 入群欢迎语
-3.4  删除 /whois 成员信息、/inactive 不活跃统计、/rename 改群名片
-3.3  /ban 拆分：setuser 只作用于本群且号码只当 QQ 号；新增 /ban setgroup <群号> <QQ号...> 跨群拉黑（仅宿主）
-3.2  /look admin 查看管理权限名单；群内管理员/群主可自行维护本群本地代管名单(localadmin/)
-3.1  自动识别名单独立存放(autoadmin/)：群主/管理员升职自动加入、降职或退群自动移除；/admin 跨群语法进帮助
-3.0  每群独立代管名单；群主/管理员自动识别加入；/admin 支持跨群管理
-2.5  跨群黑名单查看/核对/一键踢出；入群命中改为可配置，默认询问管理员
-2.4  群管日志：记录谁对谁做了什么，含其他管理员的直接禁言
-2.3  移除投票功能；支持引用消息直接操作
-2.2  昵称加缓存，避免每条指令多次同步查询
-2.1  会话状态内存缓存、昵称属性直读、@昵称去噪
-2.0  修复 14 处缺陷，新增 unban / warn / log / whois
 ```
 
-> 更早的 1.x 版本为原作者历史版本，见[原仓库](https://github.com/YiJieqwq/Regent-DREX-QFPlugin)。
-> 自 v4.2 起，本仓库通过 GitHub Actions 自动构建并提供 Release 下载。
+> 更早版本（2.0-4.1）的说明见插件内 `desc.txt` 的【更新日志】；1.x 为[原作者](https://github.com/YiJieqwq/Regent-DREX-QFPlugin)历史版本。
+> 自 v4.2 起，本仓库通过 GitHub Actions 自动构建并提供 Release 下载；v4.2.1 起改为版本号驱动——推送 main 后若 `versionCode` 是新值，即自动构建并发版。
 
 ---
 
@@ -1098,17 +1081,15 @@ Regent-DREX/          ← 顶层文件夹（来自 info.prop 的 id）
 | 方式 | 行为 |
 |------|------|
 | push 到 `main` | 构建 zip + 上传 Artifact（Actions 页面可下载） |
-| 推送 `v*` 标签（如 `v4.2`） | 构建 + **自动创建 Release 并附带 zip 与 SHA256** |
-| 手动 `Run workflow` | 和 push 一样构建 |
+| 若 `versionCode` 对应的标签 `v版本号` 尚不存在 | 构建 + **自动创建标签与 Release**（附带 zip 与 SHA256） |
+| 手动 `Run workflow` | 同样构建并执行上述自动发版判断 |
 
 ### 发布一个新版本（维护者）
 
 ```bash
 # 1. 修改 plugin/info.prop 的 versionCode（如 4.3）与 plugin/desc.txt 的更新日志
-# 2. 提交并推送
-# 3. 打标签推送即自动发布
-git tag v4.3
-git push origin v4.3
+# 2. 提交并推送到 main —— 完成
+#    CI 检测到标签 v4.3 不存在, 会自动构建、创建标签并发布 Release
 ```
 
 ### 本地打包（离线等价方案）
@@ -1118,7 +1099,7 @@ git push origin v4.3
 ```bash
 mkdir -p Regent-DREX
 cp plugin/info.prop plugin/desc.txt plugin/main.java Regent-DREX/
-zip -r Regent-DREX-v4.2.zip Regent-DREX
+zip -r Regent-DREX-v4.2.1.zip Regent-DREX
 ```
 
 > 注意：zip 的**顶层必须是 `Regent-DREX/` 文件夹**，不要直接把三个文件压平放在根目录。
@@ -1145,13 +1126,10 @@ zip -r Regent-DREX-v4.2.zip Regent-DREX
 **Q6：怎么升级新版本？**
 下载新版 zip，解压后用里面的三个文件（`info.prop` / `desc.txt` / `main.java`）覆盖旧文件即可，**配置目录 `config/` 原样保留**，数据不丢。建议升级前备份一份 `config/`。
 
-**Q7：`/log` 为什么没了？日志怎么看？**
-v4.2 起删除了 `/log` 查询指令；日志仍然完整写入插件目录下 `config/log/{群号}.txt`，直接到文件夹里查看即可。
-
-**Q8：数据怎么备份/迁移？**
+**Q7：数据怎么备份/迁移？**
 备份或迁移整个 `config/` 目录即可（宿主、代管、黑名单、警告、联盟、群配置都在里面）。
 
-**Q9：名单里的"最高权限"是什么？**
+**Q8：名单里的"最高权限"是什么？**
 隐藏的 `/master` 名单（`config/mater.txt`），只有名单宿主能维护，名单成员拥有与宿主等效的指令权限（但不能维护名单、不能被管理指令操作）。普通使用者无需关心。
 
 ---
