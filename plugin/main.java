@@ -1053,6 +1053,7 @@ if(a.startsWith("/mute all"))return"全体禁言";
 if(a.startsWith("/mute"))return"禁言";
 if(a.startsWith("/unmute all"))return"全体解禁";
 if(a.startsWith("/unmute"))return"解禁";
+if(a.startsWith("/kick setgroup"))return"跨群踢出";
 if(a.startsWith("/kick"))return"踢出";
 if(a.startsWith("/ban kick"))return"一键踢出";
 if(a.startsWith("/ban add")||a.startsWith("/ban setuser")||a.startsWith("/ban setgroup"))return"拉黑";
@@ -1113,7 +1114,7 @@ StringBuilder fb=new StringBuilder();
 fb.append("禁言成功! ").append(nm(groupId,target)).append("(").append(target).append(")");
 fb.append(" 时长: ").append(formatTime(seconds));
 if(reason!=null&&reason.length()>0)fb.append(" 理由: ").append(reason);
-fb.append(" 执行人: [atUin=").append(op).append("]");
+fb.append(" 执行人: ").append(op);
 sendReplyFeedback(groupId,replyMsgId,fb.toString());
 writeLog(groupId,op,"/mute",target,formatTime(seconds)+" "+(reason==null?"":reason));
 return true;
@@ -1126,7 +1127,7 @@ return false;
 public boolean doUnmute(String groupId,String op,String target,long replyMsgId){
 try{
 shutUp(groupId,target,0L);
-sendReplyFeedback(groupId,replyMsgId,"已解禁 "+nm(groupId,target)+"("+target+") 执行人: [atUin="+op+"]");
+sendReplyFeedback(groupId,replyMsgId,"已解禁 "+nm(groupId,target)+"("+target+") 执行人: "+op);
 writeLog(groupId,op,"/unmute",target,"");
 return true;
 }catch(Exception e){
@@ -1140,7 +1141,7 @@ kickGroup(groupId,target,false);
 StringBuilder fb=new StringBuilder();
 fb.append("已踢出 ").append(nm(groupId,target)).append("(").append(target).append(")");
 if(reason!=null&&reason.length()>0)fb.append(" 理由: ").append(reason);
-fb.append(" 执行人: [atUin=").append(op).append("]");
+fb.append(" 执行人: ").append(op);
 sendReplyFeedback(groupId,replyMsgId,fb.toString());
 writeLog(groupId,op,"/kick",target,reason);
 return true;
@@ -1156,7 +1157,7 @@ addBan(groupId,target,op,reason);
 StringBuilder fb=new StringBuilder();
 fb.append("踢黑成功! ").append(nm(groupId,target)).append("(").append(target).append(")");
 if(reason!=null&&reason.length()>0)fb.append(" 理由: ").append(reason);
-fb.append(" 执行人: [atUin=").append(op).append("]");
+fb.append(" 执行人: ").append(op);
 sendReplyFeedback(groupId,replyMsgId,fb.toString());
 writeLog(groupId,op,"/ban",target,reason);
 return true;
@@ -1377,8 +1378,10 @@ String[]parts=text.split("\\s+",3);
 if(parts.length<3){
 sendReplyFeedback(groupId,replyMsgId,
 "格式错误: /set <键> <值>\n"+
-"可用键: warnlimit(次) / joincheck(kick|ask|off) / notifygroup(群号)\n"+
-"示例: /set warnlimit 3\n/set joincheck ask\n/set notifygroup 123456789");
+"warnlimit <次数>        警告达 N 次自动踢 (1-20, 默认 3)\n"+
+"joincheck kick|ask|off  入群命中黑名单: 直接踢出/询问管理员/不处理\n"+
+"notifygroup <群号>      入群提醒转发到该群, off 取消\n"+
+"示例: /set warnlimit 3 / /set joincheck ask / /set notifygroup 123456789");
 return;
 }
 String key=parts[1].toLowerCase();
@@ -1391,7 +1394,7 @@ sendReplyFeedback(groupId,replyMsgId,"警告阈值需在 1~20 之间");
 return;
 }
 setGroupConfig(groupId,"warnlimit",String.valueOf(n));
-sendReplyFeedback(groupId,replyMsgId,"警告阈值已设为 "+n+" 次 执行人: [atUin="+op+"]");
+sendReplyFeedback(groupId,replyMsgId,"警告阈值已设为 "+n+" 次 执行人: "+op);
 writeLog(groupId,op,"/set warnlimit","",String.valueOf(n));
 }else if("joincheck".equals(key)){
 String v=value.toLowerCase();
@@ -1402,7 +1405,7 @@ return;
 }
 setGroupConfig(groupId,"joincheck",v);
 sendReplyFeedback(groupId,replyMsgId,
-"入群黑名单处理方式已设为: "+joinCheckZh(v)+" 执行人: [atUin="+op+"]");
+"入群黑名单处理方式已设为: "+joinCheckZh(v)+" 执行人: "+op);
 writeLog(groupId,op,"/set joincheck","",v);
 }else if("notifygroup".equals(key)){
 if("off".equals(value)||"none".equals(value)){
@@ -1416,10 +1419,10 @@ return;
 }
 setGroupConfig(groupId,"notifygroup",value);
 sendReplyFeedback(groupId,replyMsgId,
-"通知群已设为 "+value+"\n入群命中黑名单时, 提醒只发到该群(本群不再提醒) 执行人: [atUin="+op+"]");
+"通知群已设为 "+value+"\n入群命中黑名单时, 提醒只发到该群(本群不再提醒) 执行人: "+op);
 writeLog(groupId,op,"/set notifygroup","",value);
 }else{
-sendReplyFeedback(groupId,replyMsgId,"未知配置: "+key+"\n可用: warnlimit / joincheck / notifygroup");
+sendReplyFeedback(groupId,replyMsgId,"未知配置: "+key+"\n可用: warnlimit(警告阈值) / joincheck(入群处理) / notifygroup(提醒转发)");
 }
 }
 public void handleToggle(String groupId,String op,String text,long replyMsgId){
@@ -1430,7 +1433,7 @@ return;
 String[]parts=text.split("\\s+");
 if(parts.length<3){
 sendReplyFeedback(groupId,replyMsgId,
-"格式错误: /toggle <功能> on|off\n功能: autoban / unmutedelegate");
+"格式错误: /toggle <功能> on|off\n功能: autoban(退群自动拉黑) / unmutedelegate(代管被禁言自动解禁)");
 return;
 }
 String feature=parts[1].toLowerCase();
@@ -1444,14 +1447,14 @@ valid.add("autoban");
 valid.add("unmutedelegate");
 if(!valid.contains(feature)){
 sendReplyFeedback(groupId,replyMsgId,
-"未知功能: "+feature+"\n可用: autoban / unmutedelegate");
+"未知功能: "+feature+"\n可用: autoban(退群自动拉黑) / unmutedelegate(代管被禁言自动解禁)");
 return;
 }
 String nameZh=feature;
-if("autoban".equals(feature))nameZh="退群拉黑";
+if("autoban".equals(feature))nameZh="退群自动拉黑";
 else if("unmutedelegate".equals(feature))nameZh="自动解禁代管";
 setGroupConfig(groupId,feature,"on".equals(state)?"on":null);
-sendReplyFeedback(groupId,replyMsgId,nameZh+"已"+("on".equals(state)?"开启":"关闭")+" 执行人: [atUin="+op+"]");
+sendReplyFeedback(groupId,replyMsgId,nameZh+"已"+("on".equals(state)?"开启":"关闭")+" 执行人: "+op);
 writeLog(groupId,op,"/toggle "+feature,"",state);
 }
 public void handleLook(String groupId,String op,String text,long replyMsgId){
@@ -1488,7 +1491,7 @@ return;
 if("all".equals(args.subCommand)){
 try{
 shutUpAll(groupId,true);
-sendReplyFeedback(groupId,replyMsgId,"已开启全体禁言 执行人: [atUin="+operatorUin+"]");
+sendReplyFeedback(groupId,replyMsgId,"已开启全体禁言 执行人: "+operatorUin);
 writeLog(groupId,operatorUin,"/mute all","","");
 }catch(Exception e){
 sendReplyFeedback(groupId,replyMsgId,"全体禁言失败: "+e.getMessage());
@@ -1527,7 +1530,7 @@ return;
 if("all".equals(args.subCommand)){
 try{
 shutUpAll(groupId,false);
-sendReplyFeedback(groupId,replyMsgId,"已关闭全体禁言 执行人: [atUin="+operatorUin+"]");
+sendReplyFeedback(groupId,replyMsgId,"已关闭全体禁言 执行人: "+operatorUin);
 writeLog(groupId,operatorUin,"/unmute all","","");
 }catch(Exception e){
 sendReplyFeedback(groupId,replyMsgId,"全体解禁失败: "+e.getMessage());
@@ -1552,6 +1555,76 @@ commandHandlers.put("/kick",new CommandHandler(){
 public void handle(String groupId,String operatorUin,CommandArgs args,long replyMsgId){
 if(!isOwnerOrDelegate(groupId,operatorUin)){
 sendReplyFeedback(groupId,replyMsgId,"踢出失败: 权限不足");
+return;
+}
+if("setgroup".equals(args.subCommand)){
+ArrayList typed=new ArrayList();
+if(!args.targetFromQuote){
+for(int i=args.atCount;i<args.targets.size();i++){
+typed.add(args.targets.get(i));
+}
+}
+if(typed.isEmpty()){
+sendReplyFeedback(groupId,replyMsgId,
+"格式错误: /kick setgroup <群号> <QQ号...>\n"+
+"群号必须写在最前面, 后面的号码只当 QQ 号 (仅宿主)\n"+
+"只踢出, 不拉黑");
+return;
+}
+String targetGroup=(String)typed.get(0);
+ArrayList qqs=new ArrayList();
+for(int i=1;i<typed.size();i++)qqs.add(typed.get(i));
+for(int i=0;i<args.atCount;i++){
+String u=(String)args.targets.get(i);
+if(!qqs.contains(u))qqs.add(u);
+}
+if(qqs.isEmpty()&&args.hasReply&&args.quotedQqs!=null){
+qqs=args.quotedQqs;
+}
+if(!targetGroup.equals(groupId)&& !isOwner(operatorUin)){
+sendReplyFeedback(groupId,replyMsgId,"权限不足: 仅宿主可踢其他群的成员");
+return;
+}
+if(qqs==null||qqs.isEmpty()){
+sendReplyFeedback(groupId,replyMsgId,
+"请提供要踢出的 QQ 号\n"+
+"跨群: /kick setgroup <群号> <QQ号...> (仅宿主)\n"+
+"分隔符支持 换行 / 空格 / , / ， / | / 、");
+return;
+}
+StringBuilder fb=new StringBuilder();
+int okCount=0;
+for(int i=0;i<qqs.size();i++){
+String u=(String)qqs.get(i);
+String skipReason=null;
+if(isOwner(u))skipReason="宿主";
+else if(isProtected(targetGroup,u))skipReason="代管";
+if(skipReason!=null){
+if(fb.length()>0)fb.append("\n");
+fb.append("跳过 ").append(u).append("(").append(skipReason).append(")");
+continue;
+}
+try{
+kickGroup(targetGroup,u,false);
+okCount=okCount+1;
+if(okCount<=10){
+if(fb.length()>0)fb.append("\n");
+fb.append("已踢出 ").append(u);
+if(!targetGroup.equals(groupId))fb.append(" (群 ").append(targetGroup).append(")");
+}
+writeLog(targetGroup,operatorUin,"/kick setgroup",u,
+(args.reason==null?"":args.reason));
+}catch(Exception e){
+if(fb.length()>0)fb.append("\n");
+fb.append("踢出失败 ").append(u).append(": ").append(e.getMessage());
+}
+}
+if(okCount>10){
+if(fb.length()>0)fb.append("\n");
+fb.append("... 共 ").append(okCount).append(" 个已踢出");
+}
+if(fb.length()==0)fb.append("没有需要处理的号码");
+sendReplyFeedback(groupId,replyMsgId,fb.toString());
 return;
 }
 if(args.targets.isEmpty()){
@@ -1799,7 +1872,7 @@ StringBuilder fb=new StringBuilder();
 fb.append("已警告 ").append(nm(groupId,target)).append("(").append(target).append(") ");
 fb.append("[").append(count).append("/").append(limit).append("]");
 if(args.reason!=null&&args.reason.length()>0)fb.append(" 理由: ").append(args.reason);
-fb.append(" 执行人: [atUin=").append(operatorUin).append("]");
+fb.append(" 执行人: ").append(operatorUin);
 sendReplyFeedback(groupId,replyMsgId,fb.toString());
 }
 }
@@ -1848,7 +1921,7 @@ return;
 }
 writeLinesAtomic(f,new ArrayList());
 String label=targetGroup.equals(groupId)?"本群":("群 "+targetGroup);
-sendReplyFeedback(groupId,replyMsgId,label+"手动代管已清空(群主/管理员自动识别与本地名单不受影响) 执行人: [atUin="+operatorUin+"]");
+sendReplyFeedback(groupId,replyMsgId,label+"手动代管已清空(群主/管理员自动识别与本地名单不受影响) 执行人: "+operatorUin);
 writeLog(targetGroup,operatorUin,"/admin clear","","");
 return;
 }
@@ -1943,7 +2016,7 @@ sendReplyFeedback(groupId,replyMsgId,"本群已在联盟中");
 return;
 }
 addAllianceGroup(groupId);
-sendReplyFeedback(groupId,replyMsgId,"已加入联盟: "+groupId+" 执行人: [atUin="+operatorUin+"]");
+sendReplyFeedback(groupId,replyMsgId,"已加入联盟: "+groupId+" 执行人: "+operatorUin);
 writeLog(groupId,operatorUin,"/alliance add","",groupId);
 }else if("rm".equals(args.subCommand)){
 if(!isAllianceGroup(groupId)){
@@ -1951,7 +2024,7 @@ sendReplyFeedback(groupId,replyMsgId,"本群不在联盟中");
 return;
 }
 removeAllianceGroup(groupId);
-sendReplyFeedback(groupId,replyMsgId,"已退出联盟: "+groupId+" 执行人: [atUin="+operatorUin+"]");
+sendReplyFeedback(groupId,replyMsgId,"已退出联盟: "+groupId+" 执行人: "+operatorUin);
 writeLog(groupId,operatorUin,"/alliance rm","",groupId);
 }else if("list".equals(args.subCommand)){
 ArrayList gs=getAllianceGroups();
@@ -1998,7 +2071,7 @@ StringBuilder fb=new StringBuilder();
 fb.append("联盟封禁 ").append(nm(groupId,target)).append("(").append(target).append(")");
 if(args.reason!=null&&args.reason.length()>0)fb.append(" 理由: ").append(args.reason);
 fb.append(" 已通知 ").append(getAllianceGroups().size()).append(" 个联盟群");
-fb.append(" 执行人: [atUin=").append(operatorUin).append("]");
+fb.append(" 执行人: ").append(operatorUin);
 sendReplyFeedback(groupId,replyMsgId,fb.toString());
 }
 });
@@ -2023,7 +2096,7 @@ StringBuilder fb=new StringBuilder();
 fb.append("解除联盟封禁 ").append(nm(groupId,target)).append("(").append(target).append(")");
 if(args.reason!=null&&args.reason.length()>0)fb.append(" 原因: ").append(args.reason);
 fb.append(" 原封禁理由: ").append(oldReason.length()>0?oldReason:"无");
-fb.append(" 执行人: [atUin=").append(operatorUin).append("]");
+fb.append(" 执行人: ").append(operatorUin);
 sendReplyFeedback(groupId,replyMsgId,fb.toString());
 writeLog(groupId,operatorUin,"/unfban",target,args.reason);
 }
@@ -2038,7 +2111,7 @@ String shutAll="未知";
 try{shutAll=isShutUp(groupId)?"是":"否";}catch(Exception e){}
 StringBuilder sb=new StringBuilder();
 sb.append("群状态\n");
-sb.append("退群拉黑: ").append(isEnabled(groupId,"autoban")?"开":"关").append("\n");
+sb.append("退群自动拉黑: ").append(isEnabled(groupId,"autoban")?"开":"关").append("\n");
 sb.append("入群处理: ").append(joinCheckZh(getGroupConfig(groupId,"joincheck","ask"))).append("\n");
 String ng=getGroupConfig(groupId,"notifygroup","");
 sb.append("通知群: ").append(ng.length()>0?ng:"未设置").append("\n");
@@ -2064,12 +2137,12 @@ public void handle(String groupId,String operatorUin,CommandArgs args,long reply
 if(!isOwner(operatorUin))return;
 if(isSessionEnabled(groupId)){
 syncGroupAdmins(groupId);
-sendReplyFeedback(groupId,replyMsgId,"本群群管已启用，已刷新群主/管理员名单 执行人: [atUin="+operatorUin+"]");
+sendReplyFeedback(groupId,replyMsgId,"本群群管已启用，已刷新群主/管理员名单 执行人: "+operatorUin);
 return;
 }
 setSessionEnabled(groupId,true);
 syncGroupAdmins(groupId);
-sendReplyFeedback(groupId,replyMsgId,"本群群管已启用 执行人: [atUin="+operatorUin+"]");
+sendReplyFeedback(groupId,replyMsgId,"本群群管已启用 执行人: "+operatorUin);
 writeLog(groupId,operatorUin,"/on","","");
 }
 });
@@ -2081,7 +2154,7 @@ sendReplyFeedback(groupId,replyMsgId,"本群群管未启用");
 return;
 }
 setSessionEnabled(groupId,false);
-sendReplyFeedback(groupId,replyMsgId,"本群群管已禁用 执行人: [atUin="+operatorUin+"]");
+sendReplyFeedback(groupId,replyMsgId,"本群群管已禁用 执行人: "+operatorUin);
 }
 });
 commandHandlers.put("/help",new CommandHandler(){
@@ -2111,6 +2184,7 @@ sb.append("/unban @用户 解除踢黑\n");
 if(owner){
 sb.append("/ban setuser <QQ号...> 拉黑本群 QQ 号(引用或直接列)\n");
 sb.append("/ban setgroup <群号> <QQ号...> 跨群拉黑(仅宿主)\n");
+sb.append("/kick setgroup <群号> <QQ号...> 跨群踢出(仅宿主)\n");
 sb.append("/ban list [群号] 查看黑名单, 可跨群\n");
 sb.append("/ban check [群号] 核对本群成员\n");
 sb.append("/ban kick [群号] 一键踢出命中\n");
@@ -2126,22 +2200,18 @@ sb.append("/warn list | /warn reset @用户\n");
 sb.append("/fban @用户 [理由] 联盟封禁\n");
 sb.append("/unfban @用户 [原因] 解除封禁\n");
 sb.append("/status 查看本群配置\n");
+sb.append("/set warnlimit <次数> 警告达 N 次自动踢 (1-20, 默认 3)\n");
+sb.append("/set joincheck kick|ask|off 入群命中黑名单: 直接踢出/询问管理员/不处理\n");
+sb.append("/set notifygroup <群号> 入群提醒转发到该群, off 取消\n");
 sb.append("/toggle autoban on|off 退群自动拉黑\n");
 sb.append("/toggle unmutedelegate on|off 代管被禁言自动解禁\n");
-sb.append("/set <键> <值>\n");
 if(owner){
-sb.append("\n-- 宿主 --\n");
-sb.append("/admin add|rm|list|clear [群号] @用户\n");
-sb.append("/alliance add|rm|list\n");
 sb.append("/on 启用本群群管 | /off 禁用\n");
 }else if(containsLine(getAutoAdminFile(groupId),operatorUin)){
 sb.append("\n-- 群管维护 --\n");
 sb.append("/admin add|rm|list @用户 维护本群本地代管名单\n");
 }
-sb.append("\n时长: 数字默认秒, 可加 s/m/h/d/mth (最长 30 天)\n");
-sb.append("toggle: autoban unmutedelegate\n");
-sb.append("set: warnlimit joincheck notifygroup\n");
-sb.append("宿主设置: 在 config/owner.txt 写入 QQ 号");
+sb.append("\n时长: 数字默认秒, 可加 s/m/h/d/mth (最长 30 天)");
 sendReplyFeedback(groupId,replyMsgId,sb.toString());
 }
 });
@@ -2575,4 +2645,4 @@ for(int i=0;i<groups.size();i++){
 syncGroupAdmins((String)groups.get(i));
 }
 }catch(Exception e){dbg("syncAllAdmin: "+e);}
-dbg("Regent-DREX v4.3 loaded, pluginPath="+pluginPath);
+dbg("Regent-DREX v4.3.1 loaded, pluginPath="+pluginPath);

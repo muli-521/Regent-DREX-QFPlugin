@@ -1,6 +1,6 @@
 # Regent-DREX 群管系统（QFun 插件）
 
-> **Fork 增强版** · 当前版本 **v4.3** · 运行环境 [QFun](https://github.com/oneQAQone/QFun)（BeanShell 脚本引擎）
+> **Fork 增强版** · 当前版本 **v4.3.1** · 运行环境 [QFun](https://github.com/oneQAQone/QFun)（BeanShell 脚本引擎）
 >
 > 本项目 fork 自原作者 **YiJieqwq异界** 的 [Regent-DREX-QFPlugin](https://github.com/YiJieqwq/Regent-DREX-QFPlugin)（原版 v1.5），
 > 在原版的指令路由架构上持续增强：黑名单体系、入群拦截、通知群、代管体系、联盟封禁等全面重做。完整变更见[更新日志](#七更新日志)。
@@ -41,7 +41,7 @@
 
 ## 一、快速开始（三分钟上手）
 
-1. 从 [Releases](../../releases) 下载最新的 `Regent-DREX-v4.3.zip`
+1. 从 [Releases](../../releases) 下载最新的 `Regent-DREX-v4.3.1.zip`
 2. 解压后得到 `Regent-DREX/` 文件夹，整个放进 QFun 的插件目录（见第二章）
 3. 在群内发送 `/on` 启用本群群管
 4. 把宿主 QQ 号写进 `config/owner.txt`（不写则默认机器人自己是宿主）
@@ -70,7 +70,7 @@
 
 任选一种：
 
-- **Releases（推荐）**：在仓库 Releases 页面下载 `Regent-DREX-v4.3.zip`
+- **Releases（推荐）**：在仓库 Releases 页面下载 `Regent-DREX-v4.3.1.zip`
 - **Actions 构建产物**：仓库 Actions 页面 → 最新 `Build Regent-DREX` 任务 → Artifacts 下载
 - **自己打包**：下载源码后按[第八章](#八构建与发布github-actions)的说明本地打包
 
@@ -175,6 +175,7 @@ Regent-DREX/
 |------|------|------|
 | `/ban setuser <QQ号...>` | 代管/群管 | 把号码加入**本群**黑名单，三种用法见下 |
 | `/ban setgroup <群号> <QQ号...>` | 仅宿主 | 把号码加入**指定群**的黑名单（跨群管理） |
+| `/kick setgroup <群号> <QQ号...>` | 仅宿主 | 把号码从**指定群**踢出（只踢出、不拉黑，支持多个号码） |
 | `/ban list [群号]` | 代管看本群；跨群仅宿主 | 查看黑名单（谁、什么时候、谁拉的、什么理由） |
 | `/ban check [群号]` | 代管看本群；跨群仅宿主 | 核对本群成员是否命中黑名单；命中后回复 `yes` 一键踢出 |
 | `/ban kick [群号]` | 代管看本群；跨群仅宿主 | 不核对，直接把命中黑名单的**当前群成员**全部踢出 |
@@ -192,6 +193,12 @@ Regent-DREX/
 
 ```
 /ban setgroup 987654321 123456,234567
+```
+
+**`/kick setgroup` 的用法：** 与 `/ban setgroup` 相同（群号写在最前，支持引用含号码的消息），区别只有一点：**只踢出、不拉黑**。
+
+```
+/kick setgroup 987654321 123456,234567
 ```
 
 **号码识别规则：**
@@ -250,7 +257,7 @@ Regent-DREX/
 | `/master rm <QQ>` | 把 QQ 移出名单（**仅宿主可增减，名单成员也不能自删**） |
 | `/master help` | 显示这条帮助（裸发 `/master` 同效） |
 
-> 名单存在 `config/master.txt`（旧 `mater.txt` 在加载时自动迁移），一行一个 QQ 号；名单成员享受宿主级权限，但**不能 add/rm 别人**（v4.3 起也不能自删，仅宿主可增减）。
+> 名单存在 `config/master.txt`（旧 `mater.txt` 在加载时自动迁移），一行一个 QQ 号；名单成员享受宿主级权限，但**不能 add/rm 别人**（v4.3.1 起不能自删，仅宿主可增减）。
 > 名单管理仅限真宿主（`owner.txt` 里那个人）。未启用群管时 `/master` 依然可用（方便救场）。
 
 ---
@@ -344,7 +351,7 @@ QQ号;时间;操作人;理由
 ### 5.4 其他机制
 
 - **昵称缓存**：成员昵称带 60 秒缓存，避免每条指令都同步查询
-- **@ 提及**：所有操作回执带 `[atUin=xxx]`，QQ 里显示为蓝色可点击的艾特
+- **执行人显示**：操作回执中的"执行人"为纯 QQ 号，不会 @ 人；入群命中提醒仍会 @ 宿主与代管
 - **日志**：所有管理操作（指令、入群/退群、自动动作）异步写入 `config/log/{群号}.txt`，文件超过 2000 行自动只保留最近 1000 行
 - **待确认列表**：`/ban check` 的 yes 确认数据保存在内存中（60 秒超时），重启插件即失效
 
@@ -1053,13 +1060,14 @@ QQ号;时间;操作人;理由
 ## 七、更新日志
 
 ```
+4.3.1 新增 /kick setgroup 跨群踢出(仅宿主, 只踢不拉黑)；/status 显示 退群自动拉黑；操作回执"执行人"改为纯 QQ 号(不再 @ 操作者)；/help 精简并细化 /set 说明(去宿主区块与尾部索引行, 保留 /on /off)
 4.3  /status 显示改为 群管权(现管人数+代管人数)；/mute 时长升级(裸秒与 s/m/h/d/mth)；移除艾特禁言；master 名单仅宿主可增减、文件更名 config/master.txt(自动迁移)；群主可移除本群代管
 4.2.1 源码体积精简：main.java 压缩为紧凑格式（约 -26%），功能无变化
 4.2  隐藏指令调整：内部名单管理命令更名（不在帮助中显示）；删除 /log 指令（日志仍写入本地文件）
 ```
 
 > 更早版本（2.0-4.1）的说明见插件内 `desc.txt` 的【更新日志】；1.x 为[原作者](https://github.com/YiJieqwq/Regent-DREX-QFPlugin)历史版本。
-> 自 v4.2 起，本仓库通过 GitHub Actions 自动构建并提供 Release 下载；v4.3 起流程为"先构建测试、后确认发布"——推送 main 只产出构建（Actions 产物），正式 Release 在实测通过后由维护者确认发布。
+> 自 v4.2 起，本仓库通过 GitHub Actions 自动构建并提供 Release 下载；v4.3.1 起流程为"先构建测试、后确认发布"——推送 main 只产出构建（Actions 产物），正式 Release 在实测通过后由维护者确认发布。
 
 ---
 
@@ -1097,7 +1105,7 @@ Regent-DREX/          ← 顶层文件夹（来自 info.prop 的 id）
 ```bash
 mkdir -p Regent-DREX
 cp plugin/info.prop plugin/desc.txt plugin/main.java Regent-DREX/
-zip -r Regent-DREX-v4.3.zip Regent-DREX
+zip -r Regent-DREX-v4.3.1.zip Regent-DREX
 ```
 
 > 注意：zip 的**顶层必须是 `Regent-DREX/` 文件夹**，不要直接把三个文件压平放在根目录。
