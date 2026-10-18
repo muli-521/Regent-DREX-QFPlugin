@@ -435,7 +435,16 @@ dbg("loadOwner: "+e);
 }
 public void loadMaterList(){
 try{
-File f=new File(getConfigDir()+"/mater.txt");
+File f=new File(getConfigDir()+"/master.txt");
+if(!f.exists()){
+File legacy=new File(getConfigDir()+"/mater.txt");
+if(legacy.exists()){
+ArrayList old=readLines(legacy);
+writeLinesAtomic(f,old);
+f=legacy;
+dbg("master: 已从 mater.txt 迁移");
+}
+}
 if(!f.exists())return;
 ArrayList lines=readLines(f);
 for(int i=0;i<lines.size();i++){
@@ -486,6 +495,31 @@ public boolean isListMaster(String uin){
 if(uin==null)return false;
 if(ownerUin!=null&&ownerUin.length()>0)return uin.equals(ownerUin);
 return myUin!=null&&uin.equals(myUin);
+}
+public boolean isGroupOwner(String groupId,String uin){
+if(uin==null)return false;
+try{
+ArrayList members=getGroupMemberList(groupId);
+if(members==null)return false;
+for(int i=0;i<members.size();i++){
+Object m=members.get(i);
+if(m==null)continue;
+String mu=null;
+try{
+Object uo=optField(m,"uin");
+if(uo!=null)mu=uo.toString();
+}catch(Exception e){continue;}
+if(mu==null|| !mu.equals(uin))continue;
+Object ro=optField(m,"role");
+if(ro==null)ro=optField(m,"memberRole");
+if(ro==null)ro=optField(m,"administrator");
+if(ro==null)return false;
+return ro.toString().toLowerCase().contains("owner");
+}
+}catch(Exception e){
+dbg("isGroupOwner: "+e);
+}
+return false;
 }
 public boolean isDelegate(String groupId,String uin){
 if(uin==null)return false;
@@ -868,17 +902,26 @@ return out;
 public int parseTimeToSeconds(String s){
 if(s==null)return-1;
 s=s.toLowerCase().trim();
-if(s.length()<2)return-1;
-char unit=s.charAt(s.length()-1);
+if(s.length()==0)return-1;
 long mult;
+String numPart;
+if(s.endsWith("mth")){
+mult=2592000L;
+numPart=s.substring(0,s.length()-3);
+if(numPart.length()==0)numPart="1";
+}else{
+char unit=s.charAt(s.length()-1);
 if(unit=='s')mult=1L;
 else if(unit=='m')mult=60L;
 else if(unit=='h')mult=3600L;
 else if(unit=='d')mult=86400L;
+else if(unit>='0'&&unit<='9')mult=1L;
 else return-1;
+numPart=(unit>='0'&&unit<='9')?s:s.substring(0,s.length()-1);
+}
 long num;
 try{
-num=Long.parseLong(s.substring(0,s.length()-1));
+num=Long.parseLong(numPart);
 }catch(Exception e){
 return-1;
 }
@@ -978,7 +1021,7 @@ while(parts.length>idx&&parts[idx].matches("\\d{5,12}")){
 if(!args.targets.contains(parts[idx]))args.targets.add(parts[idx]);
 idx=idx+1;
 }
-if(parts.length>idx&&parts[idx].matches("\\d+[smMhHdD]")){
+if(parts.length>idx&&parts[idx].matches("\\d+[smMhHdD]|\\d*[mM][tT][hH]|\\d+")){
 args.timeStr=parts[idx].toLowerCase();
 args.timeSeconds=parseTimeToSeconds(args.timeStr);
 idx=idx+1;
@@ -1006,7 +1049,6 @@ return nm(groupId,uin);
 }
 public String actionZh(String a){
 if(a==null)return"";
-if(a.startsWith("/muteonat"))return"艾特禁言";
 if(a.startsWith("/mute all"))return"全体禁言";
 if(a.startsWith("/mute"))return"禁言";
 if(a.startsWith("/unmute all"))return"全体解禁";
@@ -1335,25 +1377,13 @@ String[]parts=text.split("\\s+",3);
 if(parts.length<3){
 sendReplyFeedback(groupId,replyMsgId,
 "格式错误: /set <键> <值>\n"+
-"可用键: mutetime(秒) / warnlimit(次) / joincheck(kick|ask|off) / notifygroup(群号)\n"+
-"示例: /set mutetime 600\n/set joincheck ask\n/set notifygroup 123456789");
+"可用键: warnlimit(次) / joincheck(kick|ask|off) / notifygroup(群号)\n"+
+"示例: /set warnlimit 3\n/set joincheck ask\n/set notifygroup 123456789");
 return;
 }
 String key=parts[1].toLowerCase();
 String value=parts[2].trim();
-if("mutetime".equals(key)){
-int sec=parseTimeToSeconds(value);
-if(sec<=0){
-try{sec=Integer.parseInt(value);}catch(Exception e){sec= -1;}
-}
-if(sec<=0||sec>MAX_MUTE){
-sendReplyFeedback(groupId,replyMsgId,"时间需在 1~"+MAX_MUTE+" 秒之间");
-return;
-}
-setGroupConfig(groupId,"mutetime",String.valueOf(sec));
-sendReplyFeedback(groupId,replyMsgId,"本群默认禁言时长已设为 "+formatTime(sec)+" 执行人: [atUin="+op+"]");
-writeLog(groupId,op,"/set mutetime","",formatTime(sec));
-}else if("warnlimit".equals(key)){
+if("warnlimit".equals(key)){
 int n;
 try{n=Integer.parseInt(value);}catch(Exception e){n= -1;}
 if(n<1||n>20){
@@ -1389,7 +1419,7 @@ sendReplyFeedback(groupId,replyMsgId,
 "通知群已设为 "+value+"\n入群命中黑名单时, 提醒只发到该群(本群不再提醒) 执行人: [atUin="+op+"]");
 writeLog(groupId,op,"/set notifygroup","",value);
 }else{
-sendReplyFeedback(groupId,replyMsgId,"未知配置: "+key+"\n可用: mutetime / warnlimit / joincheck / notifygroup");
+sendReplyFeedback(groupId,replyMsgId,"未知配置: "+key+"\n可用: warnlimit / joincheck / notifygroup");
 }
 }
 public void handleToggle(String groupId,String op,String text,long replyMsgId){
@@ -1400,7 +1430,7 @@ return;
 String[]parts=text.split("\\s+");
 if(parts.length<3){
 sendReplyFeedback(groupId,replyMsgId,
-"格式错误: /toggle <功能> on|off\n功能: muteonat / autoban / unmutedelegate");
+"格式错误: /toggle <功能> on|off\n功能: autoban / unmutedelegate");
 return;
 }
 String feature=parts[1].toLowerCase();
@@ -1410,17 +1440,15 @@ sendReplyFeedback(groupId,replyMsgId,"格式错误: /toggle "+feature+" on|off")
 return;
 }
 Set valid=new HashSet();
-valid.add("muteonat");
 valid.add("autoban");
 valid.add("unmutedelegate");
 if(!valid.contains(feature)){
 sendReplyFeedback(groupId,replyMsgId,
-"未知功能: "+feature+"\n可用: muteonat / autoban / unmutedelegate");
+"未知功能: "+feature+"\n可用: autoban / unmutedelegate");
 return;
 }
 String nameZh=feature;
-if("muteonat".equals(feature))nameZh="艾特禁言";
-else if("autoban".equals(feature))nameZh="退群拉黑";
+if("autoban".equals(feature))nameZh="退群拉黑";
 else if("unmutedelegate".equals(feature))nameZh="自动解禁代管";
 setGroupConfig(groupId,feature,"on".equals(state)?"on":null);
 sendReplyFeedback(groupId,replyMsgId,nameZh+"已"+("on".equals(state)?"开启":"关闭")+" 执行人: [atUin="+op+"]");
@@ -1472,12 +1500,12 @@ showMuteList(groupId,replyMsgId);
 return;
 }
 if(args.targets.isEmpty()){
-sendReplyFeedback(groupId,replyMsgId,"格式错误: /mute @用户 <时长> [理由]\n也可引用消息后直接发送 /mute <时长> [理由]\n时长格式: 30s / 15m / 2h / 1d");
+sendReplyFeedback(groupId,replyMsgId,"格式错误: /mute 用户QQ号或@用户 <时长> [理由]\n也可引用消息或@用户后直接发送 /mute <时长> [理由]\n时长: 数字默认秒(如 114), 可加后缀 s/m/h/d/mth (mth=一个月), 最长 30 天");
 return;
 }
 if(args.timeSeconds<=0){
 if(args.timeStr==null){
-sendReplyFeedback(groupId,replyMsgId,"时长格式错误: 需带单位, 如 30s / 15m / 2h / 1d");
+sendReplyFeedback(groupId,replyMsgId,"缺少时长: 如 114 (秒) / 30s / 15m / 2h / 1d / mth (一个月)");
 }else{
 sendReplyFeedback(groupId,replyMsgId,"时长超出范围: 需在 1 秒 ~ 30 天之间");
 }
@@ -1781,7 +1809,8 @@ commandHandlers.put("/admin",new CommandHandler(){
 public void handle(String groupId,String operatorUin,CommandArgs args,long replyMsgId){
 boolean owner=isOwner(operatorUin);
 boolean localMgr= !owner&&containsLine(getAutoAdminFile(groupId),operatorUin);
-if(!owner&& !localMgr){
+boolean gOwner= !owner&&isGroupOwner(groupId,operatorUin);
+if(!owner&& !localMgr&& !gOwner){
 sendReplyFeedback(groupId,replyMsgId,"权限不足: 仅宿主或本群管理员可操作");
 return;
 }
@@ -1867,9 +1896,9 @@ writeLog(targetGroup,operatorUin,"/admin add(local)",target,"");
 }
 }else{
 if(containsLine(f,target)){
-if(!owner){
+if(!owner&& !gOwner){
 if(fb.length()>0)fb.append("\n");
-fb.append(nm(targetGroup,target)).append("(").append(target).append(") 由宿主添加, 仅宿主可移除");
+fb.append(nm(targetGroup,target)).append("(").append(target).append(") 由宿主添加, 仅宿主或群主可移除");
 }else{
 removeLine(f,target);
 removeLine(lf,target);
@@ -2005,13 +2034,10 @@ if(!isOwnerOrDelegate(groupId,operatorUin)){
 sendReplyFeedback(groupId,replyMsgId,"权限不足");
 return;
 }
-int muteTime=getGroupConfigInt(groupId,"mutetime",600);
 String shutAll="未知";
 try{shutAll=isShutUp(groupId)?"是":"否";}catch(Exception e){}
 StringBuilder sb=new StringBuilder();
 sb.append("群状态\n");
-sb.append("艾特禁言: ").append(isEnabled(groupId,"muteonat")?"开":"关");
-sb.append(" (默认 ").append(formatTime(muteTime)).append(")\n");
 sb.append("退群拉黑: ").append(isEnabled(groupId,"autoban")?"开":"关").append("\n");
 sb.append("入群处理: ").append(joinCheckZh(getGroupConfig(groupId,"joincheck","ask"))).append("\n");
 String ng=getGroupConfig(groupId,"notifygroup","");
@@ -2027,7 +2053,7 @@ for(int i=0;i<aDels.size();i++){
 if(!mDels.contains(aDels.get(i)))autoExtra=autoExtra+1;
 }
 ArrayList lDels=readLines(getLocalAdminFile(groupId));
-sb.append("管理人数: ").append(mDels.size()+autoExtra).append("+").append(lDels.size()).append("/").append(aDels.size());
+sb.append("群管权: ").append(mDels.size()+autoExtra).append("(现管人数)+").append(lDels.size()).append("(代管人数)");
 sb.append("\n");
 sb.append("黑名单: ").append(getBanList(groupId).size()).append(" 人");
 sendReplyFeedback(groupId,replyMsgId,sb.toString());
@@ -2100,7 +2126,8 @@ sb.append("/warn list | /warn reset @用户\n");
 sb.append("/fban @用户 [理由] 联盟封禁\n");
 sb.append("/unfban @用户 [原因] 解除封禁\n");
 sb.append("/status 查看本群配置\n");
-sb.append("/toggle <功能> on|off\n");
+sb.append("/toggle autoban on|off 退群自动拉黑\n");
+sb.append("/toggle unmutedelegate on|off 代管被禁言自动解禁\n");
 sb.append("/set <键> <值>\n");
 if(owner){
 sb.append("\n-- 宿主 --\n");
@@ -2111,9 +2138,9 @@ sb.append("/on 启用本群群管 | /off 禁用\n");
 sb.append("\n-- 群管维护 --\n");
 sb.append("/admin add|rm|list @用户 维护本群本地代管名单\n");
 }
-sb.append("\n时长: 30s / 15m / 2h / 1d\n");
-sb.append("toggle: muteonat autoban unmutedelegate\n");
-sb.append("set: mutetime warnlimit joincheck notifygroup\n");
+sb.append("\n时长: 数字默认秒, 可加 s/m/h/d/mth (最长 30 天)\n");
+sb.append("toggle: autoban unmutedelegate\n");
+sb.append("set: warnlimit joincheck notifygroup\n");
 sb.append("宿主设置: 在 config/owner.txt 写入 QQ 号");
 sendReplyFeedback(groupId,replyMsgId,sb.toString());
 }
@@ -2392,12 +2419,11 @@ String sub=(mp.length>=2)?mp[1].toLowerCase():"";
 String u=(mp.length>=3)?mp[2].trim():"";
 if(sub.length()==0||"help".equals(sub)){
 if(!isListMaster(senderUin))return;
-sendReplyFeedback(groupId,replyMsgId,"master 指令 (隐藏)\n/master add <QQ> 添加到 mater 列表\n/master rm <QQ> 从 mater 列表移除\n/master help 本帮助");
+sendReplyFeedback(groupId,replyMsgId,"master 指令 (隐藏, 仅宿主)\n/master add <QQ> 添加到 master 名单\n/master rm <QQ> 从 master 名单移除\n/master help 本帮助");
 return;
 }
 if("add".equals(sub)||"rm".equals(sub)){
-boolean selfRemove="rm".equals(sub)&&u.length()>0&&u.equals(senderUin);
-if(!isListMaster(senderUin)&& !selfRemove){
+if(!isListMaster(senderUin)){
 sendReplyFeedback(groupId,replyMsgId,"权限不足");
 return;
 }
@@ -2407,13 +2433,13 @@ sendReplyFeedback(groupId,replyMsgId,"格式: /master add <QQ>");
 return;
 }
 if(materList.contains(u)){
-sendReplyFeedback(groupId,replyMsgId,"已在 mater 列表");
+sendReplyFeedback(groupId,replyMsgId,"已在 master 名单");
 return;
 }
 materList.add(u);
-File mf=new File(getConfigDir()+"/mater.txt");
+File mf=new File(getConfigDir()+"/master.txt");
 writeLinesAtomic(mf,materList);
-sendReplyFeedback(groupId,replyMsgId,"已添加 "+u+" 到 mater 列表");
+sendReplyFeedback(groupId,replyMsgId,"已添加 "+u+" 到 master 名单");
 return;
 }
 if(u.length()==0){
@@ -2421,13 +2447,13 @@ sendReplyFeedback(groupId,replyMsgId,"格式: /master rm <QQ>");
 return;
 }
 if(!materList.contains(u)){
-sendReplyFeedback(groupId,replyMsgId,"不在 mater 列表");
+sendReplyFeedback(groupId,replyMsgId,"不在 master 名单");
 return;
 }
 materList.remove(u);
-File mf=new File(getConfigDir()+"/mater.txt");
+File mf=new File(getConfigDir()+"/master.txt");
 writeLinesAtomic(mf,materList);
-sendReplyFeedback(groupId,replyMsgId,"已从 mater 列表移除 "+u);
+sendReplyFeedback(groupId,replyMsgId,"已从 master 名单移除 "+u);
 return;
 }
 }
@@ -2501,29 +2527,6 @@ if(handler==null)return;
 handler.handle(groupId,senderUin,args,replyMsgId);
 return;
 }
-if(isEnabled(groupId,"muteonat")&&atMe(msg)&& !isOwnerOrDelegate(groupId,senderUin)){
-int muteTime=getGroupConfigInt(groupId,"mutetime",600);
-try{
-shutUp(groupId,senderUin,(long)muteTime);
-sendFeedback(groupId,"检测到艾特机器人，已禁言 "+nm(groupId,senderUin)+" "+formatTime(muteTime));
-writeLog(groupId,"系统","/muteonat",senderUin,formatTime(muteTime));
-}catch(Exception e){
-dbg("muteonat: "+e);
-}
-return;
-}
-}
-public boolean atMe(Object msg){
-try{
-if(msg==null||msg.atList==null)return false;
-for(int i=0;i<msg.atList.size();i++){
-Object uin=msg.atList.get(i);
-if(uin!=null&&uin.toString().equals(myUin))return true;
-}
-}catch(Exception e){
-dbg("atMeError: "+e);
-}
-return false;
 }
 public void unLoadPlugin(){
 try{
@@ -2572,4 +2575,4 @@ for(int i=0;i<groups.size();i++){
 syncGroupAdmins((String)groups.get(i));
 }
 }catch(Exception e){dbg("syncAllAdmin: "+e);}
-dbg("Regent-DREX v4.2.2 loaded, pluginPath="+pluginPath);
+dbg("Regent-DREX v4.3 loaded, pluginPath="+pluginPath);
