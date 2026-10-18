@@ -1138,8 +1138,11 @@ return false;
 public boolean doKick(String groupId,String op,String target,String reason,long replyMsgId){
 try{
 kickGroup(groupId,target,false);
+boolean kickBan=isEnabled(groupId,"kickban");
+if(kickBan)addBan(groupId,target,op,(reason==null||reason.length()==0)?"踢出后拉黑":reason);
 StringBuilder fb=new StringBuilder();
 fb.append("已踢出 ").append(nm(groupId,target)).append("(").append(target).append(")");
+if(kickBan)fb.append(" 并已拉黑");
 if(reason!=null&&reason.length()>0)fb.append(" 理由: ").append(reason);
 fb.append(" 执行人: ").append(op);
 sendReplyFeedback(groupId,replyMsgId,fb.toString());
@@ -1433,7 +1436,7 @@ return;
 String[]parts=text.split("\\s+");
 if(parts.length<3){
 sendReplyFeedback(groupId,replyMsgId,
-"格式错误: /toggle <功能> on|off\n功能: autoban(退群自动拉黑) / unmutedelegate(代管被禁言自动解禁)");
+"格式错误: /toggle <功能> on|off\n功能: autoban(退群自动拉黑) / unmutedelegate(代管被禁言自动解禁) / kickban(踢出后拉黑)");
 return;
 }
 String feature=parts[1].toLowerCase();
@@ -1445,14 +1448,16 @@ return;
 Set valid=new HashSet();
 valid.add("autoban");
 valid.add("unmutedelegate");
+valid.add("kickban");
 if(!valid.contains(feature)){
 sendReplyFeedback(groupId,replyMsgId,
-"未知功能: "+feature+"\n可用: autoban(退群自动拉黑) / unmutedelegate(代管被禁言自动解禁)");
+"未知功能: "+feature+"\n可用: autoban(退群自动拉黑) / unmutedelegate(代管被禁言自动解禁) / kickban(踢出后拉黑)");
 return;
 }
 String nameZh=feature;
 if("autoban".equals(feature))nameZh="退群自动拉黑";
 else if("unmutedelegate".equals(feature))nameZh="自动解禁代管";
+else if("kickban".equals(feature))nameZh="踢出后拉黑";
 setGroupConfig(groupId,feature,"on".equals(state)?"on":null);
 sendReplyFeedback(groupId,replyMsgId,nameZh+"已"+("on".equals(state)?"开启":"关闭")+" 执行人: "+op);
 writeLog(groupId,op,"/toggle "+feature,"",state);
@@ -1568,7 +1573,7 @@ if(typed.isEmpty()){
 sendReplyFeedback(groupId,replyMsgId,
 "格式错误: /kick setgroup <群号> <QQ号...>\n"+
 "群号必须写在最前面, 后面的号码只当 QQ 号 (仅宿主)\n"+
-"只踢出, 不拉黑");
+"只踢出; 目标群开启 /toggle kickban 时同步拉黑");
 return;
 }
 String targetGroup=(String)typed.get(0);
@@ -1606,11 +1611,15 @@ continue;
 }
 try{
 kickGroup(targetGroup,u,false);
+boolean tKickBan=isEnabled(targetGroup,"kickban");
+if(tKickBan)addBan(targetGroup,u,operatorUin,
+(args.reason==null||args.reason.length()==0)?"踢出后拉黑":args.reason);
 okCount=okCount+1;
 if(okCount<=10){
 if(fb.length()>0)fb.append("\n");
 fb.append("已踢出 ").append(u);
 if(!targetGroup.equals(groupId))fb.append(" (群 ").append(targetGroup).append(")");
+if(tKickBan)fb.append(" 并已拉黑");
 }
 writeLog(targetGroup,operatorUin,"/kick setgroup",u,
 (args.reason==null?"":args.reason));
@@ -2112,6 +2121,7 @@ try{shutAll=isShutUp(groupId)?"是":"否";}catch(Exception e){}
 StringBuilder sb=new StringBuilder();
 sb.append("群状态\n");
 sb.append("退群自动拉黑: ").append(isEnabled(groupId,"autoban")?"开":"关").append("\n");
+sb.append("踢出后拉黑: ").append(isEnabled(groupId,"kickban")?"开":"关").append("\n");
 sb.append("入群处理: ").append(joinCheckZh(getGroupConfig(groupId,"joincheck","ask"))).append("\n");
 String ng=getGroupConfig(groupId,"notifygroup","");
 sb.append("通知群: ").append(ng.length()>0?ng:"未设置").append("\n");
@@ -2205,6 +2215,7 @@ sb.append("/set joincheck kick|ask|off 入群命中黑名单: 直接踢出/询�
 sb.append("/set notifygroup <群号> 入群提醒转发到该群, off 取消\n");
 sb.append("/toggle autoban on|off 退群自动拉黑\n");
 sb.append("/toggle unmutedelegate on|off 代管被禁言自动解禁\n");
+sb.append("/toggle kickban on|off 踢出后拉黑\n");
 if(owner){
 sb.append("/on 启用本群群管 | /off 禁用\n");
 }else if(containsLine(getAutoAdminFile(groupId),operatorUin)){
@@ -2645,4 +2656,4 @@ for(int i=0;i<groups.size();i++){
 syncGroupAdmins((String)groups.get(i));
 }
 }catch(Exception e){dbg("syncAllAdmin: "+e);}
-dbg("Regent-DREX v4.3.1 loaded, pluginPath="+pluginPath);
+dbg("Regent-DREX v4.3.2 loaded, pluginPath="+pluginPath);
