@@ -1,6 +1,6 @@
 # Regent-DREX 群管系统（QFun 插件）
 
-> **Fork 增强版** · 当前版本 **v4.2.1** · 运行环境 [QFun](https://github.com/oneQAQone/QFun)（BeanShell 脚本引擎）
+> **Fork 增强版** · 当前版本 **v4.2.2** · 运行环境 [QFun](https://github.com/oneQAQone/QFun)（BeanShell 脚本引擎）
 >
 > 本项目 fork 自原作者 **YiJieqwq异界** 的 [Regent-DREX-QFPlugin](https://github.com/YiJieqwq/Regent-DREX-QFPlugin)（原版 v1.5），
 > 在原版的指令路由架构上持续增强：黑名单体系、入群拦截、通知群、代管体系、联盟封禁等全面重做。完整变更见[更新日志](#七更新日志)。
@@ -41,7 +41,7 @@
 
 ## 一、快速开始（三分钟上手）
 
-1. 从 [Releases](../../releases) 下载最新的 `Regent-DREX-v4.2.1.zip`
+1. 从 [Releases](../../releases) 下载最新的 `Regent-DREX-v4.2.2.zip`
 2. 解压后得到 `Regent-DREX/` 文件夹，整个放进 QFun 的插件目录（见第二章）
 3. 在群内发送 `/on` 启用本群群管
 4. 把宿主 QQ 号写进 `config/owner.txt`（不写则默认机器人自己是宿主）
@@ -70,7 +70,7 @@
 
 任选一种：
 
-- **Releases（推荐）**：在仓库 Releases 页面下载 `Regent-DREX-v4.2.1.zip`
+- **Releases（推荐）**：在仓库 Releases 页面下载 `Regent-DREX-v4.2.2.zip`
 - **Actions 构建产物**：仓库 Actions 页面 → 最新 `Build` 任务 → Artifacts 下载
 - **自己打包**：下载源码后按[第八章](#八构建与发布github-actions)的说明本地打包
 
@@ -165,7 +165,7 @@ Regent-DREX/
 | `/warn @用户 [理由]` | 警告一次；达到阈值（默认 3 次，`/set warnlimit` 调整）自动踢出 |
 | `/warn list` | 查看本群警告记录 |
 | `/warn reset @用户` | 清空某人的警告次数 |
-| `/status` | 查看本群配置（启用状态、代管人数、黑名单人数、各类开关） |
+| `/status` | 查看本群配置（启用状态、管理人数、黑名单人数、各类开关） |
 | `/help` | 帮助（按调用者权限显示对应区块） |
 
 ### 3.2 黑名单管理（核心功能）
@@ -1056,6 +1056,7 @@ QQ号;时间;操作人;理由
 ## 七、更新日志
 
 ```
+4.2.2 /status 代管人数改为管理人数（现有管理总人数+本地代管/群管总数）
 4.2.1 源码体积精简：main.java 压缩为紧凑格式（约 -26%），功能无变化
 4.2  隐藏指令调整：内部名单管理命令更名（不在帮助中显示）；删除 /log 指令（日志仍写入本地文件）
 ```
@@ -1099,7 +1100,7 @@ Regent-DREX/          ← 顶层文件夹（来自 info.prop 的 id）
 ```bash
 mkdir -p Regent-DREX
 cp plugin/info.prop plugin/desc.txt plugin/main.java Regent-DREX/
-zip -r Regent-DREX-v4.2.1.zip Regent-DREX
+zip -r Regent-DREX-v4.2.2.zip Regent-DREX
 ```
 
 > 注意：zip 的**顶层必须是 `Regent-DREX/` 文件夹**，不要直接把三个文件压平放在根目录。

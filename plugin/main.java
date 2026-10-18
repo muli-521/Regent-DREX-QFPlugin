@@ -2026,8 +2026,8 @@ int autoExtra=0;
 for(int i=0;i<aDels.size();i++){
 if(!mDels.contains(aDels.get(i)))autoExtra=autoExtra+1;
 }
-sb.append("代管人数: ").append(mDels.size()+autoExtra);
-if(autoExtra>0)sb.append(" (自动识别 ").append(autoExtra).append(")");
+ArrayList lDels=readLines(getLocalAdminFile(groupId));
+sb.append("管理人数: ").append(mDels.size()+autoExtra).append("+").append(lDels.size()).append("/").append(aDels.size());
 sb.append("\n");
 sb.append("黑名单: ").append(getBanList(groupId).size()).append(" 人");
 sendReplyFeedback(groupId,replyMsgId,sb.toString());
@@ -2572,4 +2572,4 @@ for(int i=0;i<groups.size();i++){
 syncGroupAdmins((String)groups.get(i));
 }
 }catch(Exception e){dbg("syncAllAdmin: "+e);}
-dbg("Regent-DREX v4.2.1 loaded, pluginPath="+pluginPath);
+dbg("Regent-DREX v4.2.2 loaded, pluginPath="+pluginPath);
