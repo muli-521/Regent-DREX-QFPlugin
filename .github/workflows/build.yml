@@ -1,10 +1,10 @@
-name: Build & Release Regent-DREX
+name: Build Regent-DREX
 
-# 精简设计（v4.2+）：
-#   - 唯一触发 = 推送 main 或手动运行；不再有"标签推送"第二遍触发，也就没有双跑/竞态。
-#   - 版本号（plugin/info.prop 的 versionCode）已是新版本时，自动创建标签 + 发布 Release；
-#     版本号未变时只构建产物（Actions artifact），不重复发版。
-#   - 今后发版 = 改代码 + 改版本号 + 推送 main，打包/校验/发布全由 CI 完成。
+# 流程（2026-10-18 起）：
+#   - 推送 main 或手动运行 = 只构建 QFun 标准 zip 并上传 Actions 产物；
+#     不创建标签、不发布 Release（先构建、后测试）。
+#   - 正式发布 = 维护者实测通过后手动执行（标签 + Release，附件与测试所用构建一致）。
+#   - 历史：v4.2.1 起曾由 versionCode 驱动自动发版；v4.3 起恢复"先测试、后确认发布"。
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -22,28 +22,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout（含全部标签）
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: 读取版本并判断是否发版
+      - name: 读取版本
         id: info
         run: |
           set -euo pipefail
-          git fetch --tags --force --quiet origin 2>/dev/null || true
           ver=$(grep -m1 '^versionCode[[:space:]]*=' plugin/info.prop | sed 's/[^=]*=[[:space:]]*//' | tr -d ' \r')
           pid=$(grep -m1 '^id[[:space:]]*=' plugin/info.prop | sed 's/[^=]*=[[:space:]]*//' | tr -d ' \r')
           [ -n "$ver" ] && [ -n "$pid" ] || { echo "::error::plugin/info.prop 缺少 id/versionCode"; exit 1; }
           echo "ver=$ver" >> "$GITHUB_OUTPUT"
           echo "pid=$pid" >> "$GITHUB_OUTPUT"
-          if git rev-parse -q --verify "refs/tags/v$ver" >/dev/null; then
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "标签 v$ver 已存在 → 本次只构建产物，不重复发版"
-          else
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-            echo "标签 v$ver 不存在 → 构建后自动发布 Release v$ver"
-          fi
+          echo "本次只构建产物 Regent-DREX-v$ver（不发 Release）"
 
       - name: 打包（QFun 标准格式）+ SHA256
         env:
@@ -79,25 +70,3 @@ jobs:
             *.zip
             *.zip.sha256
           if-no-files-found: error
-
-      - name: 自动发布（仅版本号变化时）
-        if: steps.info.outputs.publish == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.info.outputs.ver }}
-          name: Regent-DREX v${{ steps.info.outputs.ver }}
-          body: |
-            ## Regent-DREX v${{ steps.info.outputs.ver }}
-
-            QFun 群管插件自动发布 —— 附件由 GitHub Actions 从仓库 `plugin/` 源码构建，与源码逐字节一致。
-
-            ### 安装（QFun）
-            1. 下载附件 `Regent-DREX-v${{ steps.info.outputs.ver }}.zip`
-            2. 解压后把 `Regent-DREX/` 整个文件夹放进 QFun 的插件目录
-            3. 群内发送 `/on` 启用；把宿主 QQ 写进 `config/owner.txt`
-
-            详细教程（安装 / 全部指令 / 配置 / FAQ / 源码注释）见 [README](https://github.com/muli-521/Regent-DREX-QFPlugin/blob/main/README.md)
-          files: |
-            *.zip
-            *.zip.sha256
-          generate_release_notes: true

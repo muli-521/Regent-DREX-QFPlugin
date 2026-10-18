@@ -71,7 +71,7 @@
 任选一种：
 
 - **Releases（推荐）**：在仓库 Releases 页面下载 `Regent-DREX-v4.3.zip`
-- **Actions 构建产物**：仓库 Actions 页面 → 最新 `Build` 任务 → Artifacts 下载
+- **Actions 构建产物**：仓库 Actions 页面 → 最新 `Build Regent-DREX` 任务 → Artifacts 下载
 - **自己打包**：下载源码后按[第八章](#八构建与发布github-actions)的说明本地打包
 
 ### 2.3 导入插件
@@ -1059,7 +1059,7 @@ QQ号;时间;操作人;理由
 ```
 
 > 更早版本（2.0-4.1）的说明见插件内 `desc.txt` 的【更新日志】；1.x 为[原作者](https://github.com/YiJieqwq/Regent-DREX-QFPlugin)历史版本。
-> 自 v4.2 起，本仓库通过 GitHub Actions 自动构建并提供 Release 下载；v4.2.1 起改为版本号驱动——推送 main 后若 `versionCode` 是新值，即自动构建并发版。
+> 自 v4.2 起，本仓库通过 GitHub Actions 自动构建并提供 Release 下载；v4.3 起流程为"先构建测试、后确认发布"——推送 main 只产出构建（Actions 产物），正式 Release 在实测通过后由维护者确认发布。
 
 ---
 
@@ -1078,16 +1078,16 @@ Regent-DREX/          ← 顶层文件夹（来自 info.prop 的 id）
 
 | 方式 | 行为 |
 |------|------|
-| push 到 `main` | 构建 zip + 上传 Artifact（Actions 页面可下载） |
-| 若 `versionCode` 对应的标签 `v版本号` 尚不存在 | 构建 + **自动创建标签与 Release**（附带 zip 与 SHA256） |
-| 手动 `Run workflow` | 同样构建并执行上述自动发版判断 |
+| push 到 `main` | 构建 zip + 上传 Artifact（Actions 页面可下载），**不发 Release** |
+| 手动 `Run workflow` | 同上，仅产出构建 |
+| 维护者确认发布 | 实测通过后手动创建标签 + Release（附件与测试所用构建逐字节一致） |
 
 ### 发布一个新版本（维护者）
 
 ```bash
-# 1. 修改 plugin/info.prop 的 versionCode（如 4.3）与 plugin/desc.txt 的更新日志
-# 2. 提交并推送到 main —— 完成
-#    CI 检测到标签 v4.3 不存在, 会自动构建、创建标签并发布 Release
+# 1. 修改 plugin/info.prop 的 versionCode（如 4.3.1）与 plugin/desc.txt 的更新日志
+# 2. 提交并推送到 main —— CI 只构建产物（Actions Artifact, 供实测）
+# 3. 实测通过后, 维护者手动发布 Release（创建标签 v4.3.1 + 上传 zip 与 SHA256）
 ```
 
 ### 本地打包（离线等价方案）
